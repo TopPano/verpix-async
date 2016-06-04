@@ -158,9 +158,12 @@ var handlePanoPhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
     var srcImgBuf = new Buffer(params.image.buffer, 'base64');
-    var thumbBuf = new Buffer(params.thumbnail.buffer, 'base64');
     var now = moment(new Date()).format('YYYY-MM-DD');
-    var response = { postId: params.postId };
+    var response = {
+      postId: params.postId,
+      thumbUrl: params.thumbnail.srcUrl,
+      thumbDownloadUrl: params.thumbnail.downloadUrl
+    };
     uploadS3Async({
       type: 'pan',
       quality: 'src',
@@ -172,25 +175,6 @@ var handlePanoPhoto = function(job) {
       response = merge({}, response, {
         srcUrl: result.s3Url,
         srcDownloadUrl: result.cdnUrl
-      });
-      return new P(function(resolve, reject) {
-        uploadS3({
-          type: 'pan',
-          quality: 'thumb',
-          postId: params.postId,
-          timestamp: now,
-          imageFilename: params.postId + '.jpg',
-          image: thumbBuf
-        }, function(err, result) {
-          if (err) { reject(err); }
-          else { resolve(result); }
-        });
-      });
-    })
-    .then(function(result) {
-      response = merge({}, response, {
-        thumbUrl: result.s3Url,
-        thumbDownloadUrl: result.cdnUrl
       });
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
