@@ -214,6 +214,38 @@ var handlePanoPhoto = function(job) {
   }
 };
 
+var handleLivePhoto = function(job) {
+  try {
+    var params = JSON.parse(job.payload);
+    var srcImgBuf = new Buffer(params.image.buffer, 'base64');
+    var now = moment(new Date()).format('YYYY-MM-DD');
+    var response = {
+      postId: params.postId,
+      thumbUrl: params.thumbnail.srcUrl,
+      thumbDownloadUrl: params.thumbnail.downloadUrl
+    };
+    uploadS3Async({
+      type: 'live',
+      quality: 'src',
+      postId: params.postId,
+      timestamp: now,
+      imageFilename: params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg'),
+      image: srcImgBuf
+    }).then(function(result) {
+      response = merge({}, response, {
+        srcUrl: result.s3Url,
+        srcDownloadUrl: result.cdnUrl
+      });
+      job.workComplete(JSON.stringify(response));
+    })
+    .catch(function(err) {
+      job.reportException(err);
+    });
+  } catch (err) {
+    job.reportException(err);
+  }
+};
+
 var deletePostImages = function(job) {
   try {
     var params = JSON.parse(job.payload);
@@ -245,6 +277,7 @@ var deletePostImages = function(job) {
 
 function addTo(worker) {
   worker.addFunction('handlePanoPhoto', handlePanoPhoto, { timeout: config.defaultTimeout });
+  worker.addFunction('handleLivePhoto', handleLivePhoto, { timeout: config.defaultTimeout });
   worker.addFunction('deletePostImages', deletePostImages, { timeout: config.defaultTimeout });
 }
 
