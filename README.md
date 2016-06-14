@@ -26,3 +26,12 @@ Start the server.
 $ node .
 ```
 
+Build docker image.
+```sh
+$ docker build -t IMAGE_NAME ./
+```
+
+Run docker container.
+```sh
+docker run IMAGE_NAME
+```
