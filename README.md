@@ -72,6 +72,3 @@ $ pm2 status
 ```
 $ npm stop
 ```
-
-
-
