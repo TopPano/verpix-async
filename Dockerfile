@@ -3,12 +3,14 @@ FROM ubuntu:14.04
 
 MAINTAINER uniray7 uniray7@gmail.com
 
-# install nodejs
+# install basic packages
 RUN apt-get update
 RUN apt-get install -y curl
-RUN curl -sL https://deb.nodesource.com/setup_5.x | sudo -E bash -
-RUN apt-get install -y nodejs
 RUN apt-get install -y build-essential
+
+# install nodejs
+RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.31.1/install.sh | bash
+RUN nvm install 5.11.1
 
 ADD . /verpix-async
 WORKDIR /verpix-async
