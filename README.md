@@ -3,19 +3,6 @@
 The job worker for handling the jobs that created by the API backend.
 
 ## Installation
-Install dependent npm modules.
-
-```
-$ npm install
-```
-
-Install dependent modules.
-
-```
-$ git submodule init
-$ git submodule update
-```
-
 Install dependent system libraries:
 
 * [GraphicsMagick](http://www.graphicsmagick.org/) or [ImageMagick](http://www.imagemagick.org/)
@@ -29,6 +16,20 @@ $ brew install graphicsmagick
 Install [Gearman](http://gearman.org/getting-started/#installing).
 
 * Install Gearman on [Mac](http://richardsumilang.com/server/gearman/install-gearman-on-os-x/)
+
+Install dependent submodules.
+
+```
+$ cd verpix-async
+$ git submodule init
+$ git submodule update
+```
+
+Install dependent npm modules.
+
+```
+$ npm install
+```
 
 ## Usage
 
