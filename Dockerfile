@@ -6,6 +6,7 @@ MAINTAINER uniray7 uniray7@gmail.com
 # install basic packages
 RUN apt-get update
 RUN apt-get install -y curl
+RUN apt-get install -y git
 RUN apt-get install -y build-essential
 
 # install nodejs
@@ -14,6 +15,8 @@ RUN nvm install 5.11.1
 
 ADD . /verpix-async
 WORKDIR /verpix-async
+RUN git submodule init
+RUN git submodule update
 RUN npm install
 
 ENV G_SERVERS='{"host":"52.196.81.49", "port":6400}'
