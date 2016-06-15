@@ -1,3 +1,0 @@
-[submodule "aws-wrapper"]
-	path = aws-wrapper
-	url = https://github.com/TopPano/aws-wrapper.git
