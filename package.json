@@ -3,13 +3,13 @@
   "version": "0.0.0",
   "main": "src/index.js",
   "scripts": {
+    "postinstall": "cd aws-wrapper; npm install",
     "dev": "S3_BKT='verpix-img-development' node src/index.js",
     "start": "NODE_ENV='production' pm2 start src/index.js --name verpix-async",
     "stop": "NODE_ENV='production' pm2 delete verpix-async -s &> /dev/null"
   },
   "dependencies": {
     "async": "1.5.2",
-    "aws-sdk": "2.3.14",
     "bluebird": "3.4.0",
     "gearmanode": "0.9.2",
     "gm": "1.21.1",
