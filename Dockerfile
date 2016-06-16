@@ -10,6 +10,9 @@ ENV NVM_DIR /home/.nvm
 RUN . $NVM_DIR/nvm.sh && nvm install v$NODE_VERSION && nvm alias default v$NODE_VERSION
 ENV PATH      $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
+# install Graphicmagick
+RUN apt-get install -y graphicsmagick
+
 ADD . /home/verpix/verpix-async
 RUN chown -R verpix:verpix /home/verpix/verpix-async
 
