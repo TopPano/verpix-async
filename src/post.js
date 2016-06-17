@@ -218,6 +218,7 @@ var handleLivePhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
     var srcImgBuf = new Buffer(params.image.buffer, 'base64');
+    var arrayBoundary = params.image.arrayBoundary;
     var now = moment(new Date()).format('YYYY-MM-DD');
     var response = {
       postId: params.postId,
@@ -235,6 +236,39 @@ var handleLivePhoto = function(job) {
       response = merge({}, response, {
         srcUrl: result.s3Url,
         srcDownloadUrl: result.cdnUrl
+      });
+      if (params.image.hasZipped) {
+        return inflate(srcImgBuf);
+      }
+      return P.resolve(srcImgBuf);
+    }).then(function(imgBuf) {
+      var parsedImgArr = Buffer(imgBuf, 'binary').toString('binary').split(arrayBoundary);
+      return new P(function(resolve, reject) {
+        var output = [];
+        async.forEachOf(parsedImgArr, function(image, index, callback) {
+          uploadS3({
+            type: 'live',
+            quality: 'high',
+            postId: params.postId,
+            timestamp: now,
+            imageFilename: params.postId + '_high_' + index + '.jpg',
+            image: Buffer(image, 'binary')
+          }, function(err, result) {
+            if (err) { return callback(err); }
+            output[index] = {
+              srcUrl: result.s3Url,
+              downloadUrl: result.cdnUrl
+            };
+            callback();
+          });
+        }, function(err) {
+          if (err) { return reject(err); }
+          resolve(output);
+        });
+      });
+    }).then(function(result) {
+      response = merge({}, response, {
+        srcHighImages: result
       });
       job.workComplete(JSON.stringify(response));
     })
