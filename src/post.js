@@ -14,7 +14,7 @@ var config = require('../config');
 var inflate = P.promisify(require('zlib').inflate);
 
 function uploadS3(params, callback) {
-  var uploader = new S3Uploader({ bucket: config.s3Bucket });
+  var uploader = new S3Uploader({ Bucket: config.s3Bucket });
   var shardingKey = genShardingKey();
 
   try {
@@ -258,7 +258,7 @@ var deletePostImages = function(job) {
     var parsedList = params.imageList.map(function(url) {
       return urlencode.decode(url.split('/').slice(3).join('/'), 'gbk');
     });
-    var remover = new S3Remover();
+    var remover = new S3Remover({ Bucket: config.s3Bucket });
     remover.on('success', function(data) {
       job.workComplete(JSON.stringify({
         status: 'success'
