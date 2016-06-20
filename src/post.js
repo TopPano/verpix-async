@@ -13,13 +13,34 @@ var config = require('../config');
 
 var inflate = P.promisify(require('zlib').inflate);
 
-function uploadS3(params, callback) {
-  var uploader = new S3Uploader({ Bucket: config.s3Bucket });
-  var shardingKey = genShardingKey();
+var s3Uploader, s3Remover;
+if (config.s3.bucket === 'MOCKUP') {
+  s3Uploader = new S3Uploader({
+    Bucket: config.s3.bucket,
+    MockupBucketPath: config.s3.mockupBucketPath,
+    MockupServerPort: config.s3.mockupServerPort
+  });
+  s3Remover = new S3Remover({ Bucket: config.s3.bucket });
+} else {
+  s3Uploader = new S3Uploader({ Bucket: config.s3.bucket });
+  s3Remover = new S3Remover({ Bucket: config.s3.bucket });
+}
 
+function uploadS3(params, callback) {
+  if (!s3Uploader) {
+    return callback(new Error('S3 uploader is not ready yet!'));
+  }
+  var shardingKey = genShardingKey();
   try {
     var fileKey = 'posts/'+params.postId+'/'+shardingKey+'/'+params.type+'/'+params.quality+'/'+params.timestamp+'/'+params.imageFilename;
-    uploader.on('success', function(data) {
+    s3Uploader.send({
+      File: params.image,
+      Key: fileKey,
+      options: {
+        ACL: 'public-read'
+      }
+    }, function(err, data) {
+      if (err) { return callback(err); }
       assert(data.hasOwnProperty('Location'), 'Unable to get location proerty from S3 response object');
       assert((data.hasOwnProperty('key') || data.hasOwnProperty('Key')), 'Unable to get key property from S3 response object');
       var s3Filename = data.key || data.Key;
@@ -33,16 +54,6 @@ function uploadS3(params, callback) {
         s3Filename: s3Filename,
         s3Url: s3Url
       });
-    });
-    uploader.on('error', function(err) {
-      callback(err);
-    });
-    uploader.send({
-      File: params.image,
-      Key: fileKey,
-      options: {
-        ACL: 'public-read'
-      }
     });
   } catch (err) {
     callback(err);
@@ -288,21 +299,20 @@ var deletePostImages = function(job) {
         status: 'success'
       }));
     }
+    if (!s3Remover) {
+      return job.reportException(new Error('S3 remover is not ready yet!'));
+    }
 
     var parsedList = params.imageList.map(function(url) {
       return urlencode.decode(url.split('/').slice(3).join('/'), 'gbk');
     });
-    var remover = new S3Remover({ Bucket: config.s3Bucket });
-    remover.on('success', function(data) {
+    s3Remover.remove({
+      Key: parsedList
+    }, function(err) {
+      if (err) { return job.reportException(err); }
       job.workComplete(JSON.stringify({
         status: 'success'
       }));
-    });
-    remover.on('error', function(err) {
-      job.reportException(err);
-    });
-    remover.remove({
-      Key: parsedList
     });
   } catch (err) {
     job.reportException(err);
