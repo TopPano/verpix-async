@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "postinstall": "cd aws-wrapper; npm install",
-    "dev": "S3_BKT='verpix-img-development' node src/index.js",
+    "dev": "node src/index.js",
     "start": "NODE_ENV='production' pm2 start src/index.js --name verpix-async",
     "stop": "NODE_ENV='production' pm2 delete verpix-async -s &> /dev/null"
   },
