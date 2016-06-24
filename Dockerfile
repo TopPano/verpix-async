@@ -23,4 +23,4 @@ RUN git submodule update
 RUN npm install
 
 ENV G_SERVERS='[{"host":"gearmand", "port":4730}]'
-CMD S3_BKT=verpix-img-development-base node src/index.js
+CMD node src/index.js
