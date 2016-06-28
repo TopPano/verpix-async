@@ -11,6 +11,15 @@ var urlencode = require('urlencode');
 var gm = require('gm');
 var config = require('../config');
 
+var DefaultPanoDimensionForMobile = {
+  width: 4096,
+  height: 2048
+};
+var DefaultLiveLowDimension = {
+  width: 320,
+  height: 240
+};
+
 var inflate = P.promisify(require('zlib').inflate);
 
 var s3Uploader, s3Remover;
@@ -78,7 +87,7 @@ function processImage(params, callback) {
     },
     mobileImages: function(callback) {
       gm(params.image)
-      .resize(4096, 2048)
+      .resize(DefaultPanoDimensionForMobile.width, DefaultPanoDimensionForMobile.height)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
         async.parallel({
@@ -99,8 +108,8 @@ function processImage(params, callback) {
             tilizeImageAndUploadS3(params.image, {
               type: 'pan',
               quality: 'low',
-              width: 4096,
-              height: 2048,
+              width: DefaultPanoDimensionForMobile.width,
+              height: DefaultPanoDimensionForMobile.height,
               postId: params.postId,
               timestamp: params.timestamp
             }, function(err, result) {
@@ -255,31 +264,61 @@ var handleLivePhoto = function(job) {
     }).then(function(imgBuf) {
       var parsedImgArr = Buffer(imgBuf, 'binary').toString('binary').split(arrayBoundary);
       return new P(function(resolve, reject) {
-        var output = [];
+        var high = [], low = [];
         async.forEachOf(parsedImgArr, function(image, index, callback) {
-          uploadS3({
-            type: 'live',
-            quality: 'high',
-            postId: params.postId,
-            timestamp: now,
-            imageFilename: params.postId + '_high_' + index + '.jpg',
-            image: Buffer(image, 'binary')
-          }, function(err, result) {
+          async.parallel({
+            uploadHighToS3: function(callback) {
+              uploadS3({
+                type: 'live',
+                quality: 'high',
+                postId: params.postId,
+                timestamp: now,
+                imageFilename: params.postId + '_high_' + index + '.jpg',
+                image: Buffer(image, 'binary')
+              }, function(err, result) {
+                if (err) { return callback(err); }
+                high[index] = {
+                  srcUrl: result.s3Url,
+                  downloadUrl: result.cdnUrl
+                };
+                callback();
+              });
+            },
+            uploadLowToS3: function(callback) {
+              gm(Buffer(image, 'binary'))
+              .resize(DefaultLiveLowDimension.width, DefaultLiveLowDimension.height)
+              .toBuffer('JPG', function(err, buffer) {
+                if (err) { return callback(err); }
+                uploadS3({
+                  type: 'live',
+                  quality: 'low',
+                  postId: params.postId,
+                  timestamp: now,
+                  imageFilename: params.postId + '_low_' + index + '.jpg',
+                  image: buffer
+                }, function(err, result) {
+                  if (err) { return callback(err); }
+                  low[index] = {
+                    srcUrl: result.s3Url,
+                    downloadUrl: result.cdnUrl
+                  };
+                  callback();
+                });
+              });
+            }
+          }, function(err) {
             if (err) { return callback(err); }
-            output[index] = {
-              srcUrl: result.s3Url,
-              downloadUrl: result.cdnUrl
-            };
             callback();
           });
         }, function(err) {
           if (err) { return reject(err); }
-          resolve(output);
+          resolve({ high: high, low: low });
         });
       });
     }).then(function(result) {
       response = merge({}, response, {
-        srcHighImages: result
+        srcHighImages: result.high,
+        srcLowImages: result.low
       });
       job.workComplete(JSON.stringify(response));
     })
