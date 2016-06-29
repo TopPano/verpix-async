@@ -70,7 +70,7 @@ function uploadS3(params, callback) {
 }
 var uploadS3Async = P.promisify(uploadS3);
 
-function processImage(params, callback) {
+var processImageAsync = P.promisify(function(params, callback) {
   async.parallel({
     webImages: function(callback) {
       tilizeImageAndUploadS3(params.image, {
@@ -172,7 +172,7 @@ function processImage(params, callback) {
       return tileGeometries;
     }
   }
-}
+});
 
 var handlePanoPhoto = function(job) {
   try {
@@ -202,19 +202,12 @@ var handlePanoPhoto = function(job) {
       return P.resolve(srcImgBuf);
     })
     .then(function(imgBuf) {
-      return new P(function(resolve, reject) {
-        processImage({
-          image: imgBuf,
-          width: params.image.width,
-          height: params.image.height,
-          postId: params.postId,
-          timestamp: now
-        }, function(err, result) {
-          if (err) { reject(err); }
-          else {
-            resolve(result);
-          }
-        });
+      return processImageAsync({
+        image: imgBuf,
+        width: params.image.width,
+        height: params.image.height,
+        postId: params.postId,
+        timestamp: now
       });
     })
     .then(function(result) {
@@ -266,49 +259,53 @@ var handleLivePhoto = function(job) {
       return new P(function(resolve, reject) {
         var high = [], low = [];
         async.forEachOf(parsedImgArr, function(image, index, callback) {
-          async.parallel({
-            uploadHighToS3: function(callback) {
-              uploadS3({
-                type: 'live',
-                quality: 'high',
-                postId: params.postId,
-                timestamp: now,
-                imageFilename: params.postId + '_high_' + index + '.jpg',
-                image: Buffer(image, 'binary')
-              }, function(err, result) {
-                if (err) { return callback(err); }
-                high[index] = {
-                  srcUrl: result.s3Url,
-                  downloadUrl: result.cdnUrl
-                };
-                callback();
-              });
-            },
-            uploadLowToS3: function(callback) {
-              gm(Buffer(image, 'binary'))
-              .resize(DefaultLiveLowDimension.width, DefaultLiveLowDimension.height)
-              .toBuffer('JPG', function(err, buffer) {
-                if (err) { return callback(err); }
+          gm(Buffer(image, 'binary'))
+          .autoOrient() // Auto-orients the image according to its EXIF data.
+          .toBuffer(function(err, buffer) {
+            async.parallel({
+              uploadHighToS3: function(callback) {
                 uploadS3({
                   type: 'live',
-                  quality: 'low',
+                  quality: 'high',
                   postId: params.postId,
                   timestamp: now,
-                  imageFilename: params.postId + '_low_' + index + '.jpg',
+                  imageFilename: params.postId + '_high_' + index + '.jpg',
                   image: buffer
                 }, function(err, result) {
                   if (err) { return callback(err); }
-                  low[index] = {
+                  high[index] = {
                     srcUrl: result.s3Url,
                     downloadUrl: result.cdnUrl
                   };
                   callback();
                 });
-              });
-            }
-          }, function(err) {
-            if (err) { return callback(err); }
-            callback();
+              },
+              uploadLowToS3: function(callback) {
+                gm(buffer)
+                .resize(DefaultLiveLowDimension.width, DefaultLiveLowDimension.height)
+                .toBuffer('JPG', function(err, resizedImg) {
+                  if (err) { return callback(err); }
+                  uploadS3({
+                    type: 'live',
+                    quality: 'low',
+                    postId: params.postId,
+                    timestamp: now,
+                    imageFilename: params.postId + '_low_' + index + '.jpg',
+                    image: resizedImg
+                  }, function(err, result) {
+                    if (err) { return callback(err); }
+                    low[index] = {
+                      srcUrl: result.s3Url,
+                      downloadUrl: result.cdnUrl
+                    };
+                    callback();
+                  });
+                });
+              }
+            }, function(err) {
+              if (err) { return callback(err); }
+              callback();
+            });
           });
         }, function(err) {
           if (err) { return reject(err); }
