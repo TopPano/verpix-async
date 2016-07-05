@@ -1,0 +1,3 @@
+[submodule "object-store"]
+	path = object-store
+	url = https://github.com/TopPano/object-store.git
