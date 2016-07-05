@@ -1,6 +1,0 @@
-[submodule "aws-wrapper"]
-	path = aws-wrapper
-	url = https://github.com/TopPano/aws-wrapper.git
-[submodule "src/utils/verpix-utils"]
-	path = src/utils/verpix-utils
-	url = https://github.com/TopPano/verpix-utils.git
