@@ -1,70 +1,38 @@
 var P = require('bluebird');
 var merge = require('lodash/merge');
 var moment = require('moment');
-var S3Uploader = require('../aws-wrapper').S3Uploader;
-var S3Remover = require('../aws-wrapper').S3Remover;
-var genShardingKey = require('./utils/sharding-key-gen');
-var assert = require('assert');
-var request = require('request');
 var async = require('async');
 var urlencode = require('urlencode');
 var gm = require('gm');
 var config = require('../config');
 
+var ObjectStore = require('../object-store');
+var store;
+if (config.store.bucket === 'MOCKUP') {
+  store = P.promisifyAll(new ObjectStore({
+    bucket: config.store.bucket,
+    mockupBucketPath: config.store.mockupBucketPath,
+    mockupServerPort: config.store.mockupServerPort
+  }), { suffix: 'Promised' });
+} else {
+  store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
+}
+
+var DefaultPanoDimensionForMobile = {
+  width: 4096,
+  height: 2048
+};
+var DefaultLiveLowDimension = {
+  width: 320,
+  height: 240
+};
+
 var inflate = P.promisify(require('zlib').inflate);
 
-var s3Uploader, s3Remover;
-if (config.s3.bucket === 'MOCKUP') {
-  s3Uploader = new S3Uploader({
-    Bucket: config.s3.bucket,
-    MockupBucketPath: config.s3.mockupBucketPath,
-    MockupServerPort: config.s3.mockupServerPort
-  });
-  s3Remover = new S3Remover({ Bucket: config.s3.bucket });
-} else {
-  s3Uploader = new S3Uploader({ Bucket: config.s3.bucket });
-  s3Remover = new S3Remover({ Bucket: config.s3.bucket });
-}
-
-function uploadS3(params, callback) {
-  if (!s3Uploader) {
-    return callback(new Error('S3 uploader is not ready yet!'));
-  }
-  var shardingKey = genShardingKey();
-  try {
-    var fileKey = 'posts/'+params.postId+'/'+shardingKey+'/'+params.type+'/'+params.quality+'/'+params.timestamp+'/'+params.imageFilename;
-    s3Uploader.send({
-      File: params.image,
-      Key: fileKey,
-      options: {
-        ACL: 'public-read'
-      }
-    }, function(err, data) {
-      if (err) { return callback(err); }
-      assert(data.hasOwnProperty('Location'), 'Unable to get location proerty from S3 response object');
-      assert((data.hasOwnProperty('key') || data.hasOwnProperty('Key')), 'Unable to get key property from S3 response object');
-      var s3Filename = data.key || data.Key;
-      var s3Url = data.Location;
-      // TODO: use real CDN download url
-      var cdnFilename = data.key || data.Key;
-      var cdnUrl = data.Location;
-      callback(null, {
-        cdnFilename: cdnFilename,
-        cdnUrl: cdnUrl,
-        s3Filename: s3Filename,
-        s3Url: s3Url
-      });
-    });
-  } catch (err) {
-    callback(err);
-  }
-}
-var uploadS3Async = P.promisify(uploadS3);
-
-function processImage(params, callback) {
+var processImageAsync = P.promisify(function(params, callback) {
   async.parallel({
     webImages: function(callback) {
-      tilizeImageAndUploadS3(params.image, {
+      tilizeImageAndCreateObject(params.image, {
         type: 'pan',
         quality: 'high',
         width: params.width,
@@ -78,29 +46,29 @@ function processImage(params, callback) {
     },
     mobileImages: function(callback) {
       gm(params.image)
-      .resize(4096, 2048)
+      .resize(DefaultPanoDimensionForMobile.width, DefaultPanoDimensionForMobile.height)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
         async.parallel({
           downsized: function(callback) {
-            uploadS3({
-              type: 'pan',
-              quality: 'src',
-              postId: params.postId,
-              timestamp: params.timestamp,
-              imageFilename: params.postId+'_low.jpg',
-              image: buffer
-            }, function(err, result) {
+            var keyArr = [ 'posts', params.postId, 'SHARDING', 'pan', 'src', params.timestamp,
+                           params.postId + '_low.jpg' ];
+            store.create(keyArr, buffer, function(err, result) {
               if (err) { return callback(err); }
-              callback(null, result);
+              callback(null, {
+                s3Filename: result.key,
+                s3Url: result.location,
+                cdnFilename: result.key,
+                cdnUrl: result.location
+              });
             });
           },
           tiled: function(callback) {
-            tilizeImageAndUploadS3(params.image, {
+            tilizeImageAndCreateObject(params.image, {
               type: 'pan',
               quality: 'low',
-              width: 4096,
-              height: 2048,
+              width: DefaultPanoDimensionForMobile.width,
+              height: DefaultPanoDimensionForMobile.height,
               postId: params.postId,
               timestamp: params.timestamp
             }, function(err, result) {
@@ -119,25 +87,21 @@ function processImage(params, callback) {
     callback(null, results);
   });
 
-  function tilizeImageAndUploadS3(imgBuf, params, callback) {
+  function tilizeImageAndCreateObject(imgBuf, params, callback) {
     var tiles = calTileGeometries(params.width, params.height)
     async.map(tiles, function(tile, callback) {
       gm(imgBuf)
       .crop(tile.width, tile.height, tile.x, tile.y)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
-        uploadS3({
-          type: params.type,
-          quality: params.quality,
-          postId: params.postId,
-          timestamp: params.timestamp,
-          imageFilename: params.postId + '_' + (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg',
-          image: buffer
-        }, function(err, result) {
+        var filename = params.postId + '_' + (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
+        var keyArr = [ 'posts', params.postId, 'SHARDING', params.type, params.quality, params.timestamp,
+                       filename ];
+        store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
           callback(null, {
-            srcUrl: result.s3Url,
-            downloadUrl: result.cdnUrl
+            srcUrl: result.location,
+            downloadUrl: result.location
           });
         });
       });
@@ -163,29 +127,36 @@ function processImage(params, callback) {
       return tileGeometries;
     }
   }
-}
+});
 
-var handlePanoPhoto = function(job) {
+var postProcessingPanoPhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
     var srcImgBuf = new Buffer(params.image.buffer, 'base64');
+    var thumbImgBuf = new Buffer(params.thumbnail.buffer, 'base64');
     var now = moment(new Date()).format('YYYY-MM-DD');
     var response = {
-      postId: params.postId,
-      thumbUrl: params.thumbnail.srcUrl,
-      thumbDownloadUrl: params.thumbnail.downloadUrl
+      mediaType: params.mediaType,
+      postId: params.postId
     };
-    uploadS3Async({
-      type: 'pan',
-      quality: 'src',
-      postId: params.postId,
-      timestamp: now,
-      imageFilename: params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg'),
-      image: srcImgBuf
-    }).then(function(result) {
+    var srcImgKeyArr = [ 'posts', params.postId, 'SHARDING', 'pan', 'src', now,
+                         params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
+    store.createPromised(srcImgKeyArr, srcImgBuf, {
+      contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
+    })
+    .then(function(result) {
       response = merge({}, response, {
-        srcUrl: result.s3Url,
-        srcDownloadUrl: result.cdnUrl
+        srcUrl: result.location,
+        srcDownloadUrl: result.location
+      });
+      var thumbImgKeyArr = [ 'posts', params.postId, 'SHARDING', 'pan', 'thumb', now,
+                             params.postId + '.jpg' ];
+      return store.createPromised(thumbImgKeyArr, thumbImgBuf);
+    })
+    .then(function(result) {
+      response = merge({}, response, {
+        thumbUrl: result.location,
+        thumbDownloadUrl: result.location
       });
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
@@ -193,19 +164,12 @@ var handlePanoPhoto = function(job) {
       return P.resolve(srcImgBuf);
     })
     .then(function(imgBuf) {
-      return new P(function(resolve, reject) {
-        processImage({
-          image: imgBuf,
-          width: params.image.width,
-          height: params.image.height,
-          postId: params.postId,
-          timestamp: now
-        }, function(err, result) {
-          if (err) { reject(err); }
-          else {
-            resolve(result);
-          }
-        });
+      return processImageAsync({
+        image: imgBuf,
+        width: params.image.width,
+        height: params.image.height,
+        postId: params.postId,
+        timestamp: now
       });
     })
     .then(function(result) {
@@ -225,66 +189,131 @@ var handlePanoPhoto = function(job) {
   }
 };
 
-var handleLivePhoto = function(job) {
-  try {
-    var params = JSON.parse(job.payload);
-    var srcImgBuf = new Buffer(params.image.buffer, 'base64');
-    var arrayBoundary = params.image.arrayBoundary;
-    var now = moment(new Date()).format('YYYY-MM-DD');
-    var response = {
-      postId: params.postId,
-      thumbUrl: params.thumbnail.srcUrl,
-      thumbDownloadUrl: params.thumbnail.downloadUrl
-    };
-    uploadS3Async({
-      type: 'live',
-      quality: 'src',
-      postId: params.postId,
-      timestamp: now,
-      imageFilename: params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg'),
-      image: srcImgBuf
-    }).then(function(result) {
-      response = merge({}, response, {
-        srcUrl: result.s3Url,
-        srcDownloadUrl: result.cdnUrl
-      });
-      if (params.image.hasZipped) {
-        return inflate(srcImgBuf);
-      }
-      return P.resolve(srcImgBuf);
-    }).then(function(imgBuf) {
-      var parsedImgArr = Buffer(imgBuf, 'binary').toString('binary').split(arrayBoundary);
-      return new P(function(resolve, reject) {
-        var output = [];
-        async.forEachOf(parsedImgArr, function(image, index, callback) {
-          uploadS3({
-            type: 'live',
-            quality: 'high',
-            postId: params.postId,
-            timestamp: now,
-            imageFilename: params.postId + '_high_' + index + '.jpg',
-            image: Buffer(image, 'binary')
-          }, function(err, result) {
+function processLivePhotoSrc(params, callback) {
+  var response = {};
+  var srcImgKeyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'src', params.timestamp,
+                       params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
+  var srcImgBuf = new Buffer(params.image.buffer, 'base64');
+  store.createPromised(srcImgKeyArr, srcImgBuf, {
+    contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
+  })
+  .then(function(result) {
+    response = merge({}, response, {
+      srcUrl: result.location,
+      srcDownloadUrl: result.location
+    });
+    if (params.image.hasZipped) {
+      return inflate(srcImgBuf);
+    }
+    return P.resolve(srcImgBuf);
+  })
+  .then(function(imgBuf) {
+    var parsedImgArr = Buffer(imgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
+    return new P(function(resolve, reject) {
+      var high = [], low = [];
+      async.forEachOf(parsedImgArr, function(image, index, callback) {
+        gm(Buffer(image, 'binary'))
+        .autoOrient() // Auto-orients the image according to its EXIF data.
+        .toBuffer(function(err, buffer) {
+          if (err) { return callback(err); }
+          async.parallel({
+            createObjHigh: function(callback) {
+              var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'high', params.timestamp,
+                             params.postId + '_high_' + index + '.jpg' ];
+              store.create(keyArr, buffer, function(err, result) {
+                if (err) { return callback(err); }
+                high[index] = {
+                  srcUrl: result.location,
+                  downloadUrl: result.location
+                };
+                callback();
+              });
+            },
+            createObjLow: function(callback) {
+              gm(buffer)
+              .resize(DefaultLiveLowDimension.width, DefaultLiveLowDimension.height)
+              .toBuffer('JPG', function(err, resizedImg) {
+                if (err) { return callback(err); }
+                var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'low', params.timestamp,
+                               params.postId + '_low_' + index + '.jpg' ];
+                store.create(keyArr, buffer, function(err, result) {
+                  if (err) { return callback(err); }
+                  low[index] = {
+                    srcUrl: result.location,
+                    downloadUrl: result.location
+                  };
+                  callback();
+                });
+              });
+            }
+          }, function(err) {
             if (err) { return callback(err); }
-            output[index] = {
-              srcUrl: result.s3Url,
-              downloadUrl: result.cdnUrl
-            };
             callback();
           });
-        }, function(err) {
-          if (err) { return reject(err); }
-          resolve(output);
         });
+      }, function(err) {
+        if (err) { return reject(err); }
+        resolve({ high: high, low: low });
       });
-    }).then(function(result) {
-      response = merge({}, response, {
-        srcHighImages: result
+    });
+  })
+  .then(function(result) {
+    response = merge({}, response, {
+      srcHighImages: result.high,
+      srcLowImages: result.low
+    });
+    callback(null, response);
+  })
+  .catch(function(err) {
+    callback(err);
+  });
+}
+
+function processLivePhotoThumb(params, callback) {
+  var srcImgBuf = new Buffer(params.image.buffer, 'base64');
+  gm(srcImgBuf)
+  .autoOrient()
+  .toBuffer('JPG', function(err, buffer) {
+    if (err) { return callback(err); }
+    var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'thumb', params.timestamp,
+                   params.postId + '.jpg' ];
+    store.create(keyArr, buffer, function(err, result) {
+      if (err) { return callback(err); }
+      callback(null, {
+        thumbUrl: result.location,
+        thumbDownloadUrl: result.location
       });
+    });
+  });
+}
+
+var postProcessingLivePhoto = function(job) {
+  try {
+    var params = JSON.parse(job.payload);
+    var now = moment(new Date()).format('YYYY-MM-DD');
+    var response = {
+      mediaType: params.mediaType,
+      postId: params.postId
+    };
+    async.parallel({
+      src: function(callback) {
+        processLivePhotoSrc({
+          postId: params.postId,
+          image: params.image,
+          timestamp: now
+        }, callback);
+      },
+      thumb: function(callback) {
+        processLivePhotoThumb({
+          postId: params.postId,
+          image: params.thumbnail,
+          timestamp: now
+        }, callback);
+      }
+    }, function(err, results) {
+      if (err) { return job.reportException(err); }
+      response = merge({}, response, results.src, results.thumb);
       job.workComplete(JSON.stringify(response));
-    })
-    .catch(function(err) {
-      job.reportException(err);
     });
   } catch (err) {
     job.reportException(err);
@@ -299,16 +328,11 @@ var deletePostImages = function(job) {
         status: 'success'
       }));
     }
-    if (!s3Remover) {
-      return job.reportException(new Error('S3 remover is not ready yet!'));
-    }
 
     var parsedList = params.imageList.map(function(url) {
       return urlencode.decode(url.split('/').slice(3).join('/'), 'gbk');
     });
-    s3Remover.remove({
-      Key: parsedList
-    }, function(err) {
+    store.delete(parsedList, function(err) {
       if (err) { return job.reportException(err); }
       job.workComplete(JSON.stringify({
         status: 'success'
@@ -320,8 +344,8 @@ var deletePostImages = function(job) {
 };
 
 function addTo(worker) {
-  worker.addFunction('handlePanoPhoto', handlePanoPhoto, { timeout: config.defaultTimeout });
-  worker.addFunction('handleLivePhoto', handleLivePhoto, { timeout: config.defaultTimeout });
+  worker.addFunction('postProcessingPanoPhoto', postProcessingPanoPhoto, { timeout: config.defaultTimeout });
+  worker.addFunction('postProcessingLivePhoto', postProcessingLivePhoto, { timeout: config.defaultTimeout });
   worker.addFunction('deletePostImages', deletePostImages, { timeout: config.defaultTimeout });
 }
 
