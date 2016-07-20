@@ -23,6 +23,9 @@ Install dependent submodules.
 $ cd verpix-async
 $ git submodule init
 $ git submodule update
+$ cd verpix-async/object-store
+$ git submodule init
+$ git submodule update
 ```
 
 Install dependent npm modules.
