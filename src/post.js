@@ -18,11 +18,11 @@ if (config.store.bucket === 'MOCKUP') {
   store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
 }
 
-var DefaultPanoDimensionForMobile = {
+var DEFAULT_PANO_DIMENSION_FOR_MOBILE = {
   width: 4096,
   height: 2048
 };
-var DefaultLiveLowDimension = {
+var DEFAULT_LIVE_LOW_DIMENSION = {
   width: 320,
   height: 240
 };
@@ -46,7 +46,7 @@ var processImageAsync = P.promisify(function(params, callback) {
     },
     mobileImages: function(callback) {
       gm(params.image)
-      .resize(DefaultPanoDimensionForMobile.width, DefaultPanoDimensionForMobile.height)
+      .resize(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width, DEFAULT_PANO_DIMENSION_FOR_MOBILE.height)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
         async.parallel({
@@ -67,8 +67,8 @@ var processImageAsync = P.promisify(function(params, callback) {
             tilizeImageAndCreateObject(params.image, {
               type: 'pan',
               quality: 'low',
-              width: DefaultPanoDimensionForMobile.width,
-              height: DefaultPanoDimensionForMobile.height,
+              width: DEFAULT_PANO_DIMENSION_FOR_MOBILE.width,
+              height: DEFAULT_PANO_DIMENSION_FOR_MOBILE.height,
               postId: params.postId,
               timestamp: params.timestamp
             }, function(err, result) {
@@ -231,7 +231,7 @@ function processLivePhotoSrc(params, callback) {
             },
             createObjLow: function(callback) {
               gm(buffer)
-              .resize(DefaultLiveLowDimension.width, DefaultLiveLowDimension.height)
+              .resize(DEFAULT_LIVE_LOW_DIMENSION.width, DEFAULT_LIVE_LOW_DIMENSION.height)
               .toBuffer('JPG', function(err, resizedImg) {
                 if (err) { return callback(err); }
                 var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'low', params.timestamp,

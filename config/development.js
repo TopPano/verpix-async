@@ -4,5 +4,5 @@ module.exports = {
   facebook: {
     appId: '630397387117048'
   },
-  shareLinkBase: 'http://my.verpix.net:8000/viewer/@'
+  shareLinkBase: 'http://dev.verpix.net:8000/viewer/@'
 };
