@@ -16,5 +16,20 @@ node ('master') {
    docker.withServer('tcp://dockerd:4243') {
 //      def img = sh "docker run laputa-api npm test"
    }
+
+   stage 'Checkout Integration Test'
+   echo 'Checkout Integration Test'
+   // Get some code from a GitHub repository
+   git url: 'git@github.com:uniray7/verpix.me.git', credentialsId:'verpix-me-cred'
+
+   stage 'Integration Test'
+   echo 'Integration test'
+   docker.withServer('tcp://dockerd:4243') {
+      sh 'docker-compose up verpix-dev-webui-mongodb &'
+      sh 'sh integration_test.sh'
+      sh 'docker-compose stop'
+      sh 'docker-compose rm -f'
+   }
+
 }
 
