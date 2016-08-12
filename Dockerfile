@@ -20,6 +20,10 @@ USER verpix
 WORKDIR /home/verpix/verpix-async
 RUN git submodule init
 RUN git submodule update
+RUN cd object-store
+RUN git submodule init
+RUN git submodule update
+RUN cd ../
 RUN npm install
 
 ENV G_SERVERS='[{"host":"gearmand", "port":4730}]'
