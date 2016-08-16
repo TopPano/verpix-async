@@ -25,7 +25,7 @@ node ('master') {
    stage 'Integration Test'
    echo 'Integration test'
    docker.withServer('tcp://dockerd:4243') {
-      sh 'docker-compose up verpix-dev-webui-mongodb &'
+      sh 'docker-compose up verpix-dev-async &'
       sh 'sh integration_test.sh'
       sh 'docker-compose stop'
       sh 'docker-compose rm -f'
