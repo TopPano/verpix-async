@@ -37,7 +37,7 @@ var processImageAsync = P.promisify(function(params, callback) {
         quality: 'high',
         width: params.width,
         height: params.height,
-        postId: params.postId,
+        mediaId: params.mediaId,
         timestamp: params.timestamp
       }, function(err, result) {
         if (err) { return callback(err); }
@@ -51,8 +51,8 @@ var processImageAsync = P.promisify(function(params, callback) {
         if (err) { return callback(err); }
         async.parallel({
           downsized: function(callback) {
-            var keyArr = [ 'posts', params.postId, 'SHARDING', 'pan', 'src', params.timestamp,
-                           params.postId + '_low.jpg' ];
+            var keyArr = [ 'media', params.mediaId, 'SHARDING', 'pan', 'src', params.timestamp,
+                           params.mediaId + '_low.jpg' ];
             store.create(keyArr, buffer, function(err, result) {
               if (err) { return callback(err); }
               callback(null, {
@@ -69,7 +69,7 @@ var processImageAsync = P.promisify(function(params, callback) {
               quality: 'low',
               width: DEFAULT_PANO_DIMENSION_FOR_MOBILE.width,
               height: DEFAULT_PANO_DIMENSION_FOR_MOBILE.height,
-              postId: params.postId,
+              mediaId: params.mediaId,
               timestamp: params.timestamp
             }, function(err, result) {
               if (err) { return callback(err); }
@@ -94,8 +94,8 @@ var processImageAsync = P.promisify(function(params, callback) {
       .crop(tile.width, tile.height, tile.x, tile.y)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
-        var filename = params.postId + '_' + (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
-        var keyArr = [ 'posts', params.postId, 'SHARDING', params.type, params.quality, params.timestamp,
+        var filename = params.mediaId + '_' + (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
+        var keyArr = [ 'media', params.mediaId, 'SHARDING', params.type, params.quality, params.timestamp,
                        filename ];
         store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
@@ -129,18 +129,18 @@ var processImageAsync = P.promisify(function(params, callback) {
   }
 });
 
-var postProcessingPanoPhoto = function(job) {
+var mediaProcessingPanoPhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
     var srcImgBuf = new Buffer(params.image.buffer, 'base64');
     var thumbImgBuf = new Buffer(params.thumbnail.buffer, 'base64');
     var now = moment(new Date()).format('YYYY-MM-DD');
     var response = {
-      mediaType: params.mediaType,
-      postId: params.postId
+      type: params.type,
+      mediaId: params.mediaId
     };
-    var srcImgKeyArr = [ 'posts', params.postId, 'SHARDING', 'pan', 'src', now,
-                         params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
+    var srcImgKeyArr = [ 'media', params.mediaId, 'SHARDING', 'pan', 'src', now,
+                         params.mediaId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
     store.createPromised(srcImgKeyArr, srcImgBuf, {
       contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
     })
@@ -149,8 +149,8 @@ var postProcessingPanoPhoto = function(job) {
         srcUrl: result.location,
         srcDownloadUrl: result.location
       });
-      var thumbImgKeyArr = [ 'posts', params.postId, 'SHARDING', 'pan', 'thumb', now,
-                             params.postId + '.jpg' ];
+      var thumbImgKeyArr = [ 'media', params.mediaId, 'SHARDING', 'pan', 'thumb', now,
+                             params.mediaId + '.jpg' ];
       return store.createPromised(thumbImgKeyArr, thumbImgBuf);
     })
     .then(function(result) {
@@ -168,7 +168,7 @@ var postProcessingPanoPhoto = function(job) {
         image: imgBuf,
         width: params.image.width,
         height: params.image.height,
-        postId: params.postId,
+        mediaId: params.mediaId,
         timestamp: now
       });
     })
@@ -191,8 +191,8 @@ var postProcessingPanoPhoto = function(job) {
 
 function processLivePhotoSrc(params, callback) {
   var response = {};
-  var srcImgKeyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'src', params.timestamp,
-                       params.postId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
+  var srcImgKeyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'src', params.timestamp,
+                       params.mediaId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
   var srcImgBuf = new Buffer(params.image.buffer, 'base64');
   store.createPromised(srcImgKeyArr, srcImgBuf, {
     contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
@@ -218,8 +218,8 @@ function processLivePhotoSrc(params, callback) {
           if (err) { return callback(err); }
           async.parallel({
             createObjHigh: function(callback) {
-              var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'high', params.timestamp,
-                             params.postId + '_high_' + index + '.jpg' ];
+              var keyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'high', params.timestamp,
+                             params.mediaId + '_high_' + index + '.jpg' ];
               store.create(keyArr, buffer, function(err, result) {
                 if (err) { return callback(err); }
                 high[index] = {
@@ -234,8 +234,8 @@ function processLivePhotoSrc(params, callback) {
               .resize(DEFAULT_LIVE_LOW_DIMENSION.width, DEFAULT_LIVE_LOW_DIMENSION.height)
               .toBuffer('JPG', function(err, resizedImg) {
                 if (err) { return callback(err); }
-                var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'low', params.timestamp,
-                               params.postId + '_low_' + index + '.jpg' ];
+                var keyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'low', params.timestamp,
+                               params.mediaId + '_low_' + index + '.jpg' ];
                 store.create(keyArr, buffer, function(err, result) {
                   if (err) { return callback(err); }
                   low[index] = {
@@ -275,8 +275,8 @@ function processLivePhotoThumb(params, callback) {
   .autoOrient()
   .toBuffer('JPG', function(err, buffer) {
     if (err) { return callback(err); }
-    var keyArr = [ 'posts', params.postId, 'SHARDING', 'live', 'thumb', params.timestamp,
-                   params.postId + '.jpg' ];
+    var keyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'thumb', params.timestamp,
+                   params.mediaId + '.jpg' ];
     store.create(keyArr, buffer, function(err, result) {
       if (err) { return callback(err); }
       callback(null, {
@@ -287,25 +287,25 @@ function processLivePhotoThumb(params, callback) {
   });
 }
 
-var postProcessingLivePhoto = function(job) {
+var mediaProcessingLivePhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
     var now = moment(new Date()).format('YYYY-MM-DD');
     var response = {
-      mediaType: params.mediaType,
-      postId: params.postId
+      type: params.type,
+      mediaId: params.mediaId
     };
     async.parallel({
       src: function(callback) {
         processLivePhotoSrc({
-          postId: params.postId,
+          mediaId: params.mediaId,
           image: params.image,
           timestamp: now
         }, callback);
       },
       thumb: function(callback) {
         processLivePhotoThumb({
-          postId: params.postId,
+          mediaId: params.mediaId,
           image: params.thumbnail,
           timestamp: now
         }, callback);
@@ -344,8 +344,8 @@ var deletePostImages = function(job) {
 };
 
 function addTo(worker) {
-  worker.addFunction('postProcessingPanoPhoto', postProcessingPanoPhoto, { timeout: config.defaultTimeout });
-  worker.addFunction('postProcessingLivePhoto', postProcessingLivePhoto, { timeout: config.defaultTimeout });
+  worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
+  worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
   worker.addFunction('deletePostImages', deletePostImages, { timeout: config.defaultTimeout });
 }
 
