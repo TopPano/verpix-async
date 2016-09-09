@@ -33,12 +33,11 @@ var processImageAsync = P.promisify(function(params, callback) {
   async.parallel({
     webImages: function(callback) {
       tilizeImageAndCreateObject(params.image, {
-        type: 'pan',
-        quality: 'high',
+        type: 'pano',
         width: params.width,
         height: params.height,
         mediaId: params.mediaId,
-        timestamp: params.timestamp
+        shardingKey: params.shardingKey
       }, function(err, result) {
         if (err) { return callback(err); }
         callback(null, result);
@@ -49,41 +48,24 @@ var processImageAsync = P.promisify(function(params, callback) {
       .resize(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width, DEFAULT_PANO_DIMENSION_FOR_MOBILE.height)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
-        async.parallel({
-          downsized: function(callback) {
-            var keyArr = [ 'media', params.mediaId, 'SHARDING', 'pan', 'src', params.timestamp,
-                           params.mediaId + '_low.jpg' ];
-            store.create(keyArr, buffer, function(err, result) {
-              if (err) { return callback(err); }
-              callback(null, {
-                s3Filename: result.key,
-                s3Url: result.location,
-                cdnFilename: result.key,
-                cdnUrl: result.location
-              });
-            });
-          },
-          tiled: function(callback) {
-            tilizeImageAndCreateObject(params.image, {
-              type: 'pan',
-              quality: 'low',
-              width: DEFAULT_PANO_DIMENSION_FOR_MOBILE.width,
-              height: DEFAULT_PANO_DIMENSION_FOR_MOBILE.height,
-              mediaId: params.mediaId,
-              timestamp: params.timestamp
-            }, function(err, result) {
-              if (err) { return callback(err); }
-              callback(null, result);
-            });
-          }
-        }, function(err, results) {
+        tilizeImageAndCreateObject(buffer, {
+          type: 'pano',
+          width: DEFAULT_PANO_DIMENSION_FOR_MOBILE.width,
+          height: DEFAULT_PANO_DIMENSION_FOR_MOBILE.height,
+          mediaId: params.mediaId,
+          shardingKey: params.shardingKey
+        }, function(err, result) {
           if (err) { return callback(err); }
-          callback(null, results);
+            callback(null, result);
+
         });
       });
     }
   }, function(err, results) {
     if (err) { return callback(err); }
+    results.quality = [];
+    results.quality.push(params.width+'X'+ params.height);  
+    results.quality.push(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width+'X'+DEFAULT_PANO_DIMENSION_FOR_MOBILE.height);  
     callback(null, results);
   });
 
@@ -94,9 +76,8 @@ var processImageAsync = P.promisify(function(params, callback) {
       .crop(tile.width, tile.height, tile.x, tile.y)
       .toBuffer('JPG', function(err, buffer) {
         if (err) { return callback(err); }
-        var filename = params.mediaId + '_' + (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
-        var keyArr = [ 'media', params.mediaId, 'SHARDING', params.type, params.quality, params.timestamp,
-                       filename ];
+        var filename = (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
+        var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+'X'+params.height, filename ];
         store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
           callback(null, {
@@ -134,30 +115,31 @@ var mediaProcessingPanoPhoto = function(job) {
     var params = JSON.parse(job.payload);
     var srcImgBuf = new Buffer(params.image.buffer, 'base64');
     var thumbImgBuf = new Buffer(params.thumbnail.buffer, 'base64');
-    var now = moment(new Date()).format('YYYY-MM-DD');
     var response = {
       type: params.type,
       mediaId: params.mediaId
     };
-    var srcImgKeyArr = [ 'media', params.mediaId, 'SHARDING', 'pan', 'src', now,
-                         params.mediaId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
+    var srcImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                         'src' + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
     store.createPromised(srcImgKeyArr, srcImgBuf, {
       contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
     })
-    .then(function(result) {
-      response = merge({}, response, {
-        srcUrl: result.location,
-        srcDownloadUrl: result.location
-      });
-      var thumbImgKeyArr = [ 'media', params.mediaId, 'SHARDING', 'pan', 'thumb', now,
-                             params.mediaId + '.jpg' ];
+    .then(function(result) { // add srcURL and srcDownUrl
+//      response = merge({}, response, {
+//          src:{
+//              srcUrl: result.location,
+//              srcDownloadUrl: result.location
+//          }
+//      });
+      var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                             'thumb' + '.jpg' ];
       return store.createPromised(thumbImgKeyArr, thumbImgBuf);
     })
     .then(function(result) {
-      response = merge({}, response, {
-        thumbUrl: result.location,
-        thumbDownloadUrl: result.location
-      });
+//      response = merge({}, response, {
+//        thumbUrl: result.location,
+//        thumbDownloadUrl: result.location
+//      });
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
       }
@@ -169,15 +151,14 @@ var mediaProcessingPanoPhoto = function(job) {
         width: params.image.width,
         height: params.image.height,
         mediaId: params.mediaId,
-        timestamp: now
+        shardingKey: params.shardingKey
       });
     })
     .then(function(result) {
       response = merge({}, response, {
-        srcTiledImages: result.webImages,
-        srcMobileUrl: result.mobileImages.downsized.s3Url,
-        srcMobileDownloadUrl: result.mobileImages.downsized.cdnUrl,
-        srcMobileTiledImages: result.mobileImages.tiled
+//        srcTiledImages: result.webImages,
+//        srcMobileTiledImages: result.mobileImages
+        quality: result.quality
       });
       job.workComplete(JSON.stringify(response));
     })
@@ -191,17 +172,12 @@ var mediaProcessingPanoPhoto = function(job) {
 
 function processLivePhotoSrc(params, callback) {
   var response = {};
-  var srcImgKeyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'src', params.timestamp,
-                       params.mediaId + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
+  var srcImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'live', 'src' + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
   var srcImgBuf = new Buffer(params.image.buffer, 'base64');
   store.createPromised(srcImgKeyArr, srcImgBuf, {
     contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
   })
   .then(function(result) {
-    response = merge({}, response, {
-      srcUrl: result.location,
-      srcDownloadUrl: result.location
-    });
     if (params.image.hasZipped) {
       return inflate(srcImgBuf);
     }
@@ -210,7 +186,6 @@ function processLivePhotoSrc(params, callback) {
   .then(function(imgBuf) {
     var parsedImgArr = Buffer(imgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
     return new P(function(resolve, reject) {
-      var high = [], low = [];
       async.forEachOf(parsedImgArr, function(image, index, callback) {
         gm(Buffer(image, 'binary'))
         .autoOrient() // Auto-orients the image according to its EXIF data.
@@ -218,14 +193,9 @@ function processLivePhotoSrc(params, callback) {
           if (err) { return callback(err); }
           async.parallel({
             createObjHigh: function(callback) {
-              var keyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'high', params.timestamp,
-                             params.mediaId + '_high_' + index + '.jpg' ];
+              var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', params.image.width+'X'+params.image.height, index + '.jpg' ];
               store.create(keyArr, buffer, function(err, result) {
                 if (err) { return callback(err); }
-                high[index] = {
-                  srcUrl: result.location,
-                  downloadUrl: result.location
-                };
                 callback();
               });
             },
@@ -234,14 +204,9 @@ function processLivePhotoSrc(params, callback) {
               .resize(DEFAULT_LIVE_LOW_DIMENSION.width, DEFAULT_LIVE_LOW_DIMENSION.height)
               .toBuffer('JPG', function(err, resizedImg) {
                 if (err) { return callback(err); }
-                var keyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'low', params.timestamp,
-                               params.mediaId + '_low_' + index + '.jpg' ];
-                store.create(keyArr, buffer, function(err, result) {
+                var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', DEFAULT_LIVE_LOW_DIMENSION.width+'X'+DEFAULT_LIVE_LOW_DIMENSION.height, index + '.jpg' ];
+                store.create(keyArr, resizedImg, function(err, result) {
                   if (err) { return callback(err); }
-                  low[index] = {
-                    srcUrl: result.location,
-                    downloadUrl: result.location
-                  };
                   callback();
                 });
               });
@@ -253,15 +218,13 @@ function processLivePhotoSrc(params, callback) {
         });
       }, function(err) {
         if (err) { return reject(err); }
-        resolve({ high: high, low: low });
+        resolve({ count: parsedImgArr.length,
+                  quality: [params.image.width+'X'+params.image.height, DEFAULT_LIVE_LOW_DIMENSION.width+'X'+DEFAULT_LIVE_LOW_DIMENSION.height]});
       });
     });
   })
   .then(function(result) {
-    response = merge({}, response, {
-      srcHighImages: result.high,
-      srcLowImages: result.low
-    });
+    response = merge({}, response, result);
     callback(null, response);
   })
   .catch(function(err) {
@@ -275,14 +238,10 @@ function processLivePhotoThumb(params, callback) {
   .autoOrient()
   .toBuffer('JPG', function(err, buffer) {
     if (err) { return callback(err); }
-    var keyArr = [ 'media', params.mediaId, 'SHARDING', 'live', 'thumb', params.timestamp,
-                   params.mediaId + '.jpg' ];
+    var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', 'thumb.jpg' ];
     store.create(keyArr, buffer, function(err, result) {
       if (err) { return callback(err); }
-      callback(null, {
-        thumbUrl: result.location,
-        thumbDownloadUrl: result.location
-      });
+      callback(null);
     });
   });
 }
@@ -290,7 +249,6 @@ function processLivePhotoThumb(params, callback) {
 var mediaProcessingLivePhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
-    var now = moment(new Date()).format('YYYY-MM-DD');
     var response = {
       type: params.type,
       mediaId: params.mediaId
@@ -300,14 +258,14 @@ var mediaProcessingLivePhoto = function(job) {
         processLivePhotoSrc({
           mediaId: params.mediaId,
           image: params.image,
-          timestamp: now
+          shardingKey: params.shardingKey,
         }, callback);
       },
       thumb: function(callback) {
         processLivePhotoThumb({
           mediaId: params.mediaId,
           image: params.thumbnail,
-          timestamp: now
+          shardingKey: params.shardingKey
         }, callback);
       }
     }, function(err, results) {
