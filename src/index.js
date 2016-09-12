@@ -11,9 +11,9 @@ worker.jobServers.forEach(function(server) {
   server.setMaxListeners(0);
 });
 
-var postFunc = require('./post');
+var mediaFunc = require('./media');
 var userFunc = require('./user');
 var shareFunc = require('./share');
-postFunc.addTo(worker);
+mediaFunc.addTo(worker);
 userFunc.addTo(worker);
 shareFunc.addTo(worker);
