@@ -3,7 +3,7 @@ var merge = require('lodash/merge');
 var moment = require('moment');
 var async = require('async');
 var urlencode = require('urlencode');
-var gm = require('gm');
+var sharp = require('sharp');
 var config = require('../config');
 
 var ObjectStore = require('../object-store');
@@ -44,9 +44,9 @@ var processImageAsync = P.promisify(function(params, callback) {
       });
     },
     mobileImages: function(callback) {
-      gm(params.image)
+      sharp(params.image)
       .resize(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width, DEFAULT_PANO_DIMENSION_FOR_MOBILE.height)
-      .toBuffer('JPG', function(err, buffer) {
+      .toBuffer(function(err, buffer) {
         if (err) { return callback(err); }
         tilizeImageAndCreateObject(buffer, {
           type: 'pano',
@@ -72,9 +72,11 @@ var processImageAsync = P.promisify(function(params, callback) {
   function tilizeImageAndCreateObject(imgBuf, params, callback) {
     var tiles = calTileGeometries(params.width, params.height)
     async.map(tiles, function(tile, callback) {
-      gm(imgBuf)
-      .crop(tile.width, tile.height, tile.x, tile.y)
-      .toBuffer('JPG', function(err, buffer) {
+      sharp(imgBuf)
+      .extract({left:tile.x, top:tile.y, width:tile.width, height:tile.height})
+      .quality(70)
+      .toFormat('jpeg')
+      .toBuffer( function(err, buffer) {
         if (err) { return callback(err); }
         var filename = (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
         var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+'X'+params.height, filename ];
@@ -172,8 +174,55 @@ var mediaProcessingPanoPhoto = function(job) {
 
 function processLivePhotoSrc(params, callback) {
   var response = {};
+  var sizeQualList;  
   var srcImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'live', 'src' + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
   var srcImgBuf = new Buffer(params.image.buffer, 'base64');
+  
+  function calSizeQualityList(imgMetadata){
+    var list = [];
+    var element ;
+    var imgWidth, imgHeight;  
+    if (imgMetadata.orientation>4) // Exif Orientation Tag ref:http://sylvana.net/jpegcrop/exif_orientation.html
+    {
+        imgWidth = imgMetadata.height;
+        imgHeight = imgMetadata.width;
+    }
+    else{
+        imgWidth = imgMetadata.width;
+        imgHeight = imgMetadata.height;
+    }
+    
+    if(imgWidth> 600){
+      list.push({width:600, height:Math.round(imgHeight*600/imgWidth), quality:70});
+      list.push({width:480, height:Math.round(imgHeight*480/imgWidth), quality:75});
+      list.push({width:360, height:Math.round(imgHeight*360/imgWidth), quality:80});
+      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    }
+    else if((imgWidth <= 600) && (imgWidth>480)) 
+    {
+      list.push({width:imgWidth, height:imgHeight, quality:75})
+      list.push({width:480, height:Math.round(imgHeight*480/imgWidth), quality:75});
+      list.push({width:360, height:Math.round(imgHeight*360/imgWidth), quality:80});
+      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    }
+    else if((imgWidth <= 480) && (imgWidth > 360))
+    {
+      list.push({width:imgWidth, height:imgHeight, quality:75})
+      list.push({width:360, height:Math.round(imgHeight*360/imgWidth), quality:80});
+      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    }
+    else if((imgWidth <=360) && (ingWidth >240))
+    {
+      list.push({width:imgWidth, height:imgHeight, quality:80})
+      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    }
+    else
+    {  
+        list.push({width:imgWidth, height:imgHeight, quality:90})
+    }
+    return list;
+  }
+    
   store.createPromised(srcImgKeyArr, srcImgBuf, {
     contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
   })
@@ -183,43 +232,47 @@ function processLivePhotoSrc(params, callback) {
     }
     return P.resolve(srcImgBuf);
   })
-  .then(function(imgBuf) {
-    var parsedImgArr = Buffer(imgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
+  .then(function(srcImgBuf){
+    return new P(function(resolve, reject){
+      var parsedImgArr = Buffer(srcImgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
+      sharp(Buffer(parsedImgArr[0],'binary'))
+        .metadata(function(err, metadata){
+          if(err){return reject(err);}
+          sizeQualList = calSizeQualityList(metadata);
+          resolve(parsedImgArr);  
+      })
+    });
+  })  
+  .then(function(parsedImgArr) {
     return new P(function(resolve, reject) {
-      async.forEachOf(parsedImgArr, function(image, index, callback) {
-        gm(Buffer(image, 'binary'))
-        .autoOrient() // Auto-orients the image according to its EXIF data.
-        .toBuffer(function(err, buffer) {
-          if (err) { return callback(err); }
-          async.parallel({
-            createObjHigh: function(callback) {
-              var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', params.image.width+'X'+params.image.height, index + '.jpg' ];
-              store.create(keyArr, buffer, function(err, result) {
-                if (err) { return callback(err); }
-                callback();
-              });
-            },
-            createObjLow: function(callback) {
-              gm(buffer)
-              .resize(DEFAULT_LIVE_LOW_DIMENSION.width, DEFAULT_LIVE_LOW_DIMENSION.height)
-              .toBuffer('JPG', function(err, resizedImg) {
-                if (err) { return callback(err); }
-                var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', DEFAULT_LIVE_LOW_DIMENSION.width+'X'+DEFAULT_LIVE_LOW_DIMENSION.height, index + '.jpg' ];
-                store.create(keyArr, resizedImg, function(err, result) {
-                  if (err) { return callback(err); }
-                  callback();
-                });
-              });
-            }
-          }, function(err) {
-            if (err) { return callback(err); }
-            callback();
-          });
-        });
-      }, function(err) {
+      async.forEachOf(parsedImgArr, function(image, imgIndex, asyncParsedImgCb) {
+        var imgObj = sharp(Buffer(image, 'binary'));
+        var rotatedImgObj = imgObj.rotate();
+        async.forEachOf(sizeQualList, function(sizeQual, listIndex, asyncSizeQualCb){
+          rotatedImgObj
+          .resize(sizeQual.width, sizeQual.height)
+          .quality(sizeQual.quality)
+          .toBuffer(function(err, outputBuf){
+            var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', sizeQual.width+'X'+sizeQual.height, imgIndex + '.jpg' ];
+            store.create(keyArr, outputBuf, function(err, result) {
+              if (err) { return asyncSizeQualCb(err); }
+              asyncSizeQualCb();
+            }); // store.create
+          }); // .toBuffer
+        },
+        function(err){
+          if (err) { return reject(err); }
+          asyncParsedImgCb();  
+        }); // async.forEachOf
+      },function(err){
         if (err) { return reject(err); }
-        resolve({ count: parsedImgArr.length,
-                  quality: [params.image.width+'X'+params.image.height, DEFAULT_LIVE_LOW_DIMENSION.width+'X'+DEFAULT_LIVE_LOW_DIMENSION.height]});
+        var imgSizeList =[];
+        for(var i=0; i<sizeQualList.length; i++)
+        {
+            imgSizeList.push(sizeQualList[i].width+'X'+sizeQualList[i].height);
+        }
+        resolve({ count: parsedImgArr.length, 
+                  quality: imgSizeList});
       });
     });
   })
@@ -234,9 +287,10 @@ function processLivePhotoSrc(params, callback) {
 
 function processLivePhotoThumb(params, callback) {
   var srcImgBuf = new Buffer(params.image.buffer, 'base64');
-  gm(srcImgBuf)
-  .autoOrient()
-  .toBuffer('JPG', function(err, buffer) {
+  sharp(srcImgBuf)
+  .rotate()
+  .toFormat('jpeg')  
+  .toBuffer(function(err, buffer) {
     if (err) { return callback(err); }
     var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', 'thumb.jpg' ];
     store.create(keyArr, buffer, function(err, result) {
