@@ -134,7 +134,7 @@ var mediaProcessingPanoPhoto = function(job) {
 //          }
 //      });
       var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
-                             'thumb' + '.jpg' ];
+                             'thumb.jpg' ];
       return store.createPromised(thumbImgKeyArr, thumbImgBuf);
     })
     .then(function(result) {
