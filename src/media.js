@@ -22,10 +22,6 @@ var DEFAULT_PANO_DIMENSION_FOR_MOBILE = {
   width: 4096,
   height: 2048
 };
-var DEFAULT_LIVE_LOW_DIMENSION = {
-  width: 320,
-  height: 240
-};
 
 var inflate = P.promisify(require('zlib').inflate);
 
@@ -64,8 +60,8 @@ var processImageAsync = P.promisify(function(params, callback) {
   }, function(err, results) {
     if (err) { return callback(err); }
     results.quality = [];
-    results.quality.push(params.width+'X'+ params.height);  
-    results.quality.push(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width+'X'+DEFAULT_PANO_DIMENSION_FOR_MOBILE.height);  
+    results.quality.push(params.width+ 'X' + params.height);  
+    results.quality.push(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width+ 'X' +DEFAULT_PANO_DIMENSION_FOR_MOBILE.height);  
     callback(null, results);
   });
 
@@ -79,7 +75,7 @@ var processImageAsync = P.promisify(function(params, callback) {
       .toBuffer( function(err, buffer) {
         if (err) { return callback(err); }
         var filename = (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
-        var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+'X'+params.height, filename ];
+        var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
         store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
           callback(null, {
@@ -178,47 +174,42 @@ function processLivePhotoSrc(params, callback) {
   var srcImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'live', 'src' + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
   var srcImgBuf = new Buffer(params.image.buffer, 'base64');
   
-  function calSizeQualityList(imgMetadata){
+  function calSizeQualityList(imgMetadata) {
     var list = [];
     var element ;
     var imgWidth, imgHeight;  
-    if (imgMetadata.orientation>4) // Exif Orientation Tag ref:http://sylvana.net/jpegcrop/exif_orientation.html
-    {
-        imgWidth = imgMetadata.height;
-        imgHeight = imgMetadata.width;
+    if (imgMetadata.orientation > 4) {    // Exif Orientation Tag ref:http://sylvana.net/jpegcrop/exif_orientation.html
+      imgWidth = imgMetadata.height;
+      imgHeight = imgMetadata.width;
     }
     else{
-        imgWidth = imgMetadata.width;
-        imgHeight = imgMetadata.height;
+      imgWidth = imgMetadata.width;
+      imgHeight = imgMetadata.height;
     }
     
-    if(imgWidth> 600){
-      list.push({width:600, height:Math.round(imgHeight*600/imgWidth), quality:70});
-      list.push({width:480, height:Math.round(imgHeight*480/imgWidth), quality:75});
-      list.push({width:360, height:Math.round(imgHeight*360/imgWidth), quality:80});
-      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    if(imgWidth > 600) {
+      list.push({width: 600, height: Math.round((imgHeight * 600) / imgWidth), quality: 70});
+      list.push({width: 480, height: Math.round((imgHeight * 480) / imgWidth), quality: 75});
+      list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
+      list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
-    else if((imgWidth <= 600) && (imgWidth>480)) 
-    {
-      list.push({width:imgWidth, height:imgHeight, quality:75})
-      list.push({width:480, height:Math.round(imgHeight*480/imgWidth), quality:75});
-      list.push({width:360, height:Math.round(imgHeight*360/imgWidth), quality:80});
-      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    else if((imgWidth <= 600) && (imgWidth > 480)) {
+      list.push({width: imgWidth, height: imgHeight, quality: 75})
+      list.push({width: 480, height: Math.round((imgHeight * 480) / imgWidth), quality: 75});
+      list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
+      list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
-    else if((imgWidth <= 480) && (imgWidth > 360))
-    {
-      list.push({width:imgWidth, height:imgHeight, quality:75})
-      list.push({width:360, height:Math.round(imgHeight*360/imgWidth), quality:80});
-      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    else if((imgWidth <= 480) && (imgWidth > 360)) {
+      list.push({width: imgWidth, height: imgHeight, quality: 75})
+      list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
+      list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
-    else if((imgWidth <=360) && (ingWidth >240))
-    {
-      list.push({width:imgWidth, height:imgHeight, quality:80})
-      list.push({width:240, height:Math.round(imgHeight*240/imgWidth), quality:90});
+    else if((imgWidth <= 360) && (ingWidth > 240)) {
+      list.push({ width: imgWidth, height: imgHeight, quality: 80 })
+      list.push({ width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
-    else
-    {  
-        list.push({width:imgWidth, height:imgHeight, quality:90})
+    else {  
+        list.push({ width: imgWidth, height: imgHeight, quality: 90 })
     }
     return list;
   }
@@ -232,12 +223,12 @@ function processLivePhotoSrc(params, callback) {
     }
     return P.resolve(srcImgBuf);
   })
-  .then(function(srcImgBuf){
-    return new P(function(resolve, reject){
+  .then(function(srcImgBuf) {
+    return new P(function(resolve, reject) {
       var parsedImgArr = Buffer(srcImgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
       sharp(Buffer(parsedImgArr[0],'binary'))
-        .metadata(function(err, metadata){
-          if(err){return reject(err);}
+        .metadata(function(err, metadata) {
+          if(err) { return reject(err); }
           sizeQualList = calSizeQualityList(metadata);
           resolve(parsedImgArr);  
       })
@@ -248,29 +239,27 @@ function processLivePhotoSrc(params, callback) {
       async.forEachOf(parsedImgArr, function(image, imgIndex, asyncParsedImgCb) {
         var imgObj = sharp(Buffer(image, 'binary'));
         var rotatedImgObj = imgObj.rotate();
-        async.forEachOf(sizeQualList, function(sizeQual, listIndex, asyncSizeQualCb){
+        async.forEachOf(sizeQualList, function(sizeQual, listIndex, asyncSizeQualCb) {
           rotatedImgObj
           .resize(sizeQual.width, sizeQual.height)
           .quality(sizeQual.quality)
-          .toBuffer(function(err, outputBuf){
-            var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', sizeQual.width+'X'+sizeQual.height, imgIndex + '.jpg' ];
+          .toBuffer(function(err, outputBuf) {
+            var keyArr = [ params.shardingKey, 'media', params.mediaId, 'live', sizeQual.width+ 'X' +sizeQual.height, imgIndex + '.jpg' ];
             store.create(keyArr, outputBuf, function(err, result) {
               if (err) { return asyncSizeQualCb(err); }
               asyncSizeQualCb();
             }); // store.create
           }); // .toBuffer
         },
-        function(err){
+        function(err) {
           if (err) { return reject(err); }
           asyncParsedImgCb();  
         }); // async.forEachOf
-      },function(err){
+      },function(err) {
         if (err) { return reject(err); }
-        var imgSizeList =[];
-        for(var i=0; i<sizeQualList.length; i++)
-        {
-            imgSizeList.push(sizeQualList[i].width+'X'+sizeQualList[i].height);
-        }
+        var imgSizeList = sizeQualList.map(function(sizeQual) {
+          return sizeQual.width + 'X' + sizeQual.height;
+        });
         resolve({ count: parsedImgArr.length, 
                   quality: imgSizeList});
       });
@@ -332,7 +321,7 @@ var mediaProcessingLivePhoto = function(job) {
   }
 };
 
-var deletePostImages = function(job) {
+var deleteMediaImages = function(job) {
   try {
     var params = JSON.parse(job.payload);
     if (!params.imageList || params.imageList.length === 0) {
@@ -358,7 +347,7 @@ var deletePostImages = function(job) {
 function addTo(worker) {
   worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
   worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
-  worker.addFunction('deletePostImages', deletePostImages, { timeout: config.defaultTimeout });
+  worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
 }
 
 module.exports = {
