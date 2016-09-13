@@ -225,7 +225,7 @@ function processLivePhotoSrc(params, callback) {
   })
   .then(function(srcImgBuf) {
     return new P(function(resolve, reject) {
-      var parsedImgArr = Buffer(srcImgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
+      var parsedImgArr = Buffer(srcImgBuf, 'binary').toString('binary').split(params.image.imgArrBoundary);
       sharp(Buffer(parsedImgArr[0],'binary'))
         .metadata(function(err, metadata) {
           if(err) { return reject(err); }
@@ -324,16 +324,32 @@ var mediaProcessingLivePhoto = function(job) {
 var deleteMediaImages = function(job) {
   try {
     var params = JSON.parse(job.payload);
-    if (!params.imageList || params.imageList.length === 0) {
+    if (!params.media) {
       return job.workComplete(JSON.stringify({
         status: 'success'
       }));
     }
+    
+    var type;  
+    if (params.media.type === 'panoPhoto') {
+      type = 'pano';
+    }  
+    else if (params.media.type === 'livePhoto') {
+      type = 'live';
+    }
+    var deleteList = []; 
+    var keyPrefix = params.media.content.shardingKey+'/media/'+params.media.sid+'/'+type+'/';
 
-    var parsedList = params.imageList.map(function(url) {
-      return urlencode.decode(url.split('/').slice(3).join('/'), 'gbk');
+    deleteList.push(keyPrefix+'thumb.jpg');
+    deleteList.push(keyPrefix+'src.jpg');
+    deleteList.push(keyPrefix+'src.jpg.zip');
+    
+    params.media.content.quality.map(function(quality) {
+      for(var i=0; i<params.media.content.count; i++) {
+        deleteList.push(keyPrefix+quality+'/'+i+'.jpg');
+      }
     });
-    store.delete(parsedList, function(err) {
+    store.delete(deleteList, function(err) {
       if (err) { return job.reportException(err); }
       job.workComplete(JSON.stringify({
         status: 'success'
