@@ -4,6 +4,7 @@ var moment = require('moment');
 var async = require('async');
 var urlencode = require('urlencode');
 var sharp = require('sharp');
+var ffmpeg = require('fluent-ffmpeg');
 var config = require('../config');
 
 var ObjectStore = require('../object-store');
@@ -209,8 +210,17 @@ function processLivePhotoSrc(params, callback) {
       list.push({ width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
     else {  
-        list.push({ width: imgWidth, height: imgHeight, quality: 90 })
+      list.push({ width: imgWidth, height: imgHeight, quality: 90 })
     }
+
+    // make all height is even, for limits of converting livephotos to video
+    for (var i = 0; i < list.length; i++){
+      if (list[i].height%2 == 1){
+        list[i].height += 1;
+      }
+    }
+
+
     return list;
   }
     
@@ -360,10 +370,24 @@ var deleteMediaImages = function(job) {
   }
 };
 
+var convertImgsToVideo = function(job) {
+  try {
+    var params = JSON.parse(job.payload);
+
+
+
+  } catch (err) {
+    job.reportException(err);
+  }
+};
+
+
+
 function addTo(worker) {
   worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
   worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
   worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
+  worker.addFunction('convertImgsToVideo', convertImgsToVideo, { timeout: config.defaultTimeout });
 }
 
 module.exports = {
