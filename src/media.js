@@ -204,7 +204,7 @@ function processLivePhotoSrc(params, callback) {
       list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
       list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
-    else if((imgWidth <= 360) && (ingWidth > 240)) {
+    else if((imgWidth <= 360) && (imgWidth > 240)) {
       list.push({ width: imgWidth, height: imgHeight, quality: 80 })
       list.push({ width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
