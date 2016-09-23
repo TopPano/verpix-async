@@ -4,6 +4,7 @@ var moment = require('moment');
 var async = require('async');
 var urlencode = require('urlencode');
 var sharp = require('sharp');
+var ffmpeg = require('fluent-ffmpeg');
 var config = require('../config');
 
 var ObjectStore = require('../object-store');
@@ -204,13 +205,22 @@ function processLivePhotoSrc(params, callback) {
       list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
       list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
-    else if((imgWidth <= 360) && (ingWidth > 240)) {
+    else if((imgWidth <= 360) && (imgWidth > 240)) {
       list.push({ width: imgWidth, height: imgHeight, quality: 80 })
       list.push({ width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
     else {  
-        list.push({ width: imgWidth, height: imgHeight, quality: 90 })
+      list.push({ width: imgWidth, height: imgHeight, quality: 90 })
     }
+
+    // make all height is even, for limits of converting livephotos to video
+    for (var i = 0; i < list.length; i++){
+      if (list[i].height%2 == 1){
+        list[i].height += 1;
+      }
+    }
+
+
     return list;
   }
     
@@ -225,7 +235,7 @@ function processLivePhotoSrc(params, callback) {
   })
   .then(function(srcImgBuf) {
     return new P(function(resolve, reject) {
-      var parsedImgArr = Buffer(srcImgBuf, 'binary').toString('binary').split(params.image.arrayBoundary);
+      var parsedImgArr = Buffer(srcImgBuf, 'binary').toString('binary').split(params.image.imgArrBoundary);
       sharp(Buffer(parsedImgArr[0],'binary'))
         .metadata(function(err, metadata) {
           if(err) { return reject(err); }
@@ -324,16 +334,32 @@ var mediaProcessingLivePhoto = function(job) {
 var deleteMediaImages = function(job) {
   try {
     var params = JSON.parse(job.payload);
-    if (!params.imageList || params.imageList.length === 0) {
+    if (!params.media) {
       return job.workComplete(JSON.stringify({
         status: 'success'
       }));
     }
+    
+    var type;  
+    if (params.media.type === 'panoPhoto') {
+      type = 'pano';
+    }  
+    else if (params.media.type === 'livePhoto') {
+      type = 'live';
+    }
+    var deleteList = []; 
+    var keyPrefix = params.media.content.shardingKey+'/media/'+params.media.sid+'/'+type+'/';
 
-    var parsedList = params.imageList.map(function(url) {
-      return urlencode.decode(url.split('/').slice(3).join('/'), 'gbk');
+    deleteList.push(keyPrefix+'thumb.jpg');
+    deleteList.push(keyPrefix+'src.jpg');
+    deleteList.push(keyPrefix+'src.jpg.zip');
+    
+    params.media.content.quality.map(function(quality) {
+      for(var i=0; i<params.media.content.count; i++) {
+        deleteList.push(keyPrefix+quality+'/'+i+'.jpg');
+      }
     });
-    store.delete(parsedList, function(err) {
+    store.delete(deleteList, function(err) {
       if (err) { return job.reportException(err); }
       job.workComplete(JSON.stringify({
         status: 'success'
@@ -344,10 +370,24 @@ var deleteMediaImages = function(job) {
   }
 };
 
+var convertImgsToVideo = function(job) {
+  try {
+    var params = JSON.parse(job.payload);
+
+
+
+  } catch (err) {
+    job.reportException(err);
+  }
+};
+
+
+
 function addTo(worker) {
   worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
   worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
   worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
+  worker.addFunction('convertImgsToVideo', convertImgsToVideo, { timeout: config.defaultTimeout });
 }
 
 module.exports = {
