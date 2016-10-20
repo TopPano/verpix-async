@@ -7,6 +7,7 @@ var sharp = require('sharp');
 var ffmpeg = require('fluent-ffmpeg');
 var fs = require('fs');
 var config = require('../config');
+var randomstring = require("randomstring");
 
 var ObjectStore = require('../object-store');
 var store;
@@ -379,20 +380,22 @@ var convertImgsToVideo = function(job) {
       keyPrefix += 'live/';
     } 
     keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';  
-    //var storeUrl = mediaObj.content.storeUrl;  
-    var storeUrl = 'http://192.168.1.27:6559/';  
+    var cdnUrl = mediaObj.content.cdnUrl;  
+    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid+'.mp4';
+    console.log(tmpFilename);
+
     ffmpeg()
-    .input( storeUrl+keyPrefix+'%d.jpg' )
+    .input( cdnUrl+keyPrefix+'%d.jpg' )
     .inputFPS(25)
     .fps(25)
     .on('end', function() {
-      console.log('video has been converted successfully');
-      fs.readFile(mediaObj.sid+'.mp4', function(err, data){
+      // console.log('video has been converted successfully');
+      fs.readFile(tmpFilename, function(err, data){
         if(err){ return callback(err);}  
         var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
         store.create(keyArr, data, function(err, result) {
           if (err) { return callback(err); }
-          fs.unlink(mediaObj.sid+'.mp4', function(err, data){
+          fs.unlink(tmpFilename, function(err, data){
             if (err) { return callback(err); }
               job.workComplete(JSON.stringify({
                 status: 'success',
@@ -405,7 +408,7 @@ var convertImgsToVideo = function(job) {
     .on('error', function(err) {
       //console.error(err);
     })
-    .save(mediaObj.sid+'.mp4');
+    .save(tmpFilename);
            
 
   } catch (err) {
