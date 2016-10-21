@@ -391,16 +391,16 @@ var convertImgsToVideo = function(job) {
     .on('end', function() {
       // console.log('video has been converted successfully');
       fs.readFile(tmpFilename, function(err, data){
-        if(err){ return callback(err);}  
+        if(err){ return job.reportException(err); }  
         var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
         store.create(keyArr, data, function(err, result) {
-          if (err) { return callback(err); }
+          if (err) { return job.reportException(err); }
           fs.unlink(tmpFilename, function(err, data){
-            if (err) { return callback(err); }
-              job.workComplete(JSON.stringify({
-                status: 'success',
-                videoType: 'mp4'  
-              }));
+            if (err) { return job.reportException(err); }
+            job.workComplete(JSON.stringify({
+              status: 'success',
+              videoType: 'mp4'  
+            }));
           });  
         });
       });
