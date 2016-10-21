@@ -22,6 +22,11 @@
       "from": "array-series@>=0.1.5 <0.2.0",
       "resolved": "https://registry.npmjs.org/array-series/-/array-series-0.1.5.tgz"
     },
+    "array-uniq": {
+      "version": "1.0.2",
+      "from": "array-uniq@1.0.2",
+      "resolved": "https://registry.npmjs.org/array-uniq/-/array-uniq-1.0.2.tgz"
+    },
     "asn1": {
       "version": "0.2.3",
       "from": "asn1@>=0.2.3 <0.3.0",
@@ -637,6 +642,11 @@
       "version": "6.1.0",
       "from": "qs@>=6.1.0 <6.2.0",
       "resolved": "https://registry.npmjs.org/qs/-/qs-6.1.0.tgz"
+    },
+    "randomstring": {
+      "version": "1.1.5",
+      "from": "randomstring@>=1.1.5 <1.1.6",
+      "resolved": "https://registry.npmjs.org/randomstring/-/randomstring-1.1.5.tgz"
     },
     "readable-stream": {
       "version": "2.0.6",

@@ -5,7 +5,9 @@ var async = require('async');
 var urlencode = require('urlencode');
 var sharp = require('sharp');
 var ffmpeg = require('fluent-ffmpeg');
+var fs = require('fs');
 var config = require('../config');
+var randomstring = require("randomstring");
 
 var ObjectStore = require('../object-store');
 var store;
@@ -372,9 +374,42 @@ var deleteMediaImages = function(job) {
 
 var convertImgsToVideo = function(job) {
   try {
-    var params = JSON.parse(job.payload);
+    var mediaObj = JSON.parse(job.payload);
+    var keyPrefix = mediaObj.content.shardingKey+'/media/'+mediaObj.sid+'/';
+    if (mediaObj.type === 'livePhoto'){
+      keyPrefix += 'live/';
+    } 
+    keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';  
+    var cdnUrl = mediaObj.content.cdnUrl;  
+    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid+'.mp4';
+    console.log(tmpFilename);
 
-
+    ffmpeg()
+    .input( cdnUrl+keyPrefix+'%d.jpg' )
+    .inputFPS(25)
+    .fps(25)
+    .on('end', function() {
+      // console.log('video has been converted successfully');
+      fs.readFile(tmpFilename, function(err, data){
+        if(err){ return job.reportException(err); }  
+        var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
+        store.create(keyArr, data, function(err, result) {
+          if (err) { return job.reportException(err); }
+          fs.unlink(tmpFilename, function(err, data){
+            if (err) { return job.reportException(err); }
+            job.workComplete(JSON.stringify({
+              status: 'success',
+              videoType: 'mp4'  
+            }));
+          });  
+        });
+      });
+    })
+    .on('error', function(err) {
+      //console.error(err);
+    })
+    .save(tmpFilename);
+           
 
   } catch (err) {
     job.reportException(err);

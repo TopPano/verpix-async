@@ -34,6 +34,26 @@ Install dependent npm modules.
 $ npm install
 ```
 
+## As a service 
+
+* Build image
+
+    ```sh
+    $ docker build -t verpix-async :1.0.0 ./
+    ```
+
+* Create container
+
+    ```sh
+    $ docker create --restart always -v $aws_cred_path:/root/.aws --env STORE_BKT='$BKT_NAME' --add-host=gearmand:$IP $imageId
+    ```
+
+* Start container
+
+    ```sh
+    $ docker start $containerId
+    ```
+
 ## Usage
 
 Set up a [Gearman job server](http://gearman.org/getting-started/#starting) before starting the application.
