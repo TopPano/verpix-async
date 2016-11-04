@@ -15,7 +15,7 @@ RUN npm install -g pm2
 
 # install python2.7 for sharp, which is node_module of verpix-async
 RUN apt-get install -y python
-
+RUN apt-get install -y software-properties-common
 RUN add-apt-repository ppa:jon-severinsson/ffmpeg
 RUN apt-get update
 RUN apt-get install ffmpeg
