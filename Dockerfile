@@ -16,9 +16,9 @@ RUN npm install -g pm2
 # install python2.7 for sharp, which is node_module of verpix-async
 RUN apt-get install -y python
 RUN apt-get install -y software-properties-common
-RUN add-apt-repository ppa:jon-severinsson/ffmpeg
+RUN add-apt-repository ppa:mc3man/trusty-media
 RUN apt-get update
-RUN apt-get install ffmpeg
+RUN apt-get install -y ffmpeg
 
 ADD . /home/verpix/verpix-async
 RUN chown -R verpix:verpix /home/verpix/verpix-async
@@ -46,5 +46,5 @@ ENV STORE_BKT=$STORE_BKT
 
 # set gearman host
 ARG GEARMAN_HOST
-ENV G_SERVERS='[{"host":"$GEARMAN_HOST", "port":4730}]'
+ENV G_SERVERS='[{"host":"'$GEARMAN_HOST'", "port":4730}]'
 CMD npm run docker-start
