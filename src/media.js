@@ -126,21 +126,11 @@ var mediaProcessingPanoPhoto = function(job) {
       contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
     })
     .then(function(result) { // add srcURL and srcDownUrl
-//      response = merge({}, response, {
-//          src:{
-//              srcUrl: result.location,
-//              srcDownloadUrl: result.location
-//          }
-//      });
       var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
                              'thumb.jpg' ];
       return store.createPromised(thumbImgKeyArr, thumbImgBuf);
     })
     .then(function(result) {
-//      response = merge({}, response, {
-//        thumbUrl: result.location,
-//        thumbDownloadUrl: result.location
-//      });
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
       }
@@ -157,8 +147,6 @@ var mediaProcessingPanoPhoto = function(job) {
     })
     .then(function(result) {
       response = merge({}, response, {
-//        srcTiledImages: result.webImages,
-//        srcMobileTiledImages: result.mobileImages
         quality: result.quality
       });
       job.workComplete(JSON.stringify(response));
@@ -382,7 +370,6 @@ var convertImgsToVideo = function(job) {
     keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';  
     var cdnUrl = mediaObj.content.cdnUrl;  
     var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid+'.mp4';
-    console.log(tmpFilename);
 
     ffmpeg()
     .input( cdnUrl+keyPrefix+'%d.jpg' )
@@ -393,7 +380,7 @@ var convertImgsToVideo = function(job) {
       fs.readFile(tmpFilename, function(err, data){
         if(err){ return job.reportException(err); }  
         var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
-        store.create(keyArr, data, function(err, result) {
+        store.create(keyArr, data, {contentType: 'video/mp4'}, function(err, result) {
           if (err) { return job.reportException(err); }
           fs.unlink(tmpFilename, function(err, data){
             if (err) { return job.reportException(err); }
