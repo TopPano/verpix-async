@@ -366,37 +366,104 @@ var convertImgsToVideo = function(job) {
     var keyPrefix = mediaObj.content.shardingKey+'/media/'+mediaObj.sid+'/';
     if (mediaObj.type === 'livePhoto'){
       keyPrefix += 'live/';
-    } 
+    }
     keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';  
     var cdnUrl = mediaObj.content.cdnUrl;  
-    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid+'.mp4';
+    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid;
 
-    ffmpeg()
-    .input( cdnUrl+keyPrefix+'%d.jpg' )
-    .inputFPS(25)
-    .fps(25)
-    .on('end', function() {
-      // console.log('video has been converted successfully');
-      fs.readFile(tmpFilename, function(err, data){
+    
+    var convertJpgToVideo = function(params, callback) {
+      var originalStream = fs.createWriteStream(params.oriFilename);
+      ffmpeg()
+      .input(params.input)
+      .inputFPS(25)
+      .fps(25)
+      .videoCodec('libx264')
+      .format('avi')
+      .on('end', function() {
+        callback(null, params);
+      })
+      .pipe(originalStream);
+    };
+    
+    var createReverseVideo = function(params, callback) {
+      var reversedStream = fs.createWriteStream(params.revFilename);
+      ffmpeg()
+      .input(params.oriFilename)
+      .inputFPS(25)
+      .videoCodec('libx264')
+      .videoFilters('reverse')
+      .fps(25)
+      .format('avi')
+      .on('end', function() {
+        callback(null, params);
+      })
+      .pipe(reversedStream);
+    };
+    
+    var concatVideo = function(params, callback) {
+      ffmpeg()
+      .input(params.oriFilename)
+      .input(params.revFilename)
+      .format('mp4')
+      .on('end', function(){
+        callback(null, params);
+      })
+      .mergeToFile(params.outFilename, './')
+    };
+ 
+    var uploadS3 = function(params, callback) {
+      fs.readFile(params.outFilename, function(err, data){
         if(err){ return job.reportException(err); }  
         var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
         store.create(keyArr, data, {contentType: 'video/mp4'}, function(err, result) {
-          if (err) { return job.reportException(err); }
-          fs.unlink(tmpFilename, function(err, data){
-            if (err) { return job.reportException(err); }
-            job.workComplete(JSON.stringify({
-              status: 'success',
-              videoType: 'mp4'  
-            }));
-          });  
+          if (err) {return callback(err);}
+          callback(null, params);
         });
       });
-    })
-    .on('error', function(err) {
-      //console.error(err);
-    })
-    .save(tmpFilename);
-           
+    };
+ 
+    var deleteTmps = function(params, callback) {
+      async.parallel([
+        (cb) => { 
+          fs.unlink(params.oriFilename, function(err, data){
+            if (err) { return cb(err);}
+            cb(null);
+          });  
+        },
+        (cb) => { 
+          fs.unlink(params.revFilename, function(err, data){
+            if (err) { return cb(err);}
+            cb(null);
+          });  
+        },
+        (cb) => { 
+          fs.unlink(params.outFilename, function(err, data){
+            if (err) { return cb(err);}
+            cb(null);
+          });  
+        }],
+
+        (err, res) =>{
+          if(err) {return callback(err);}
+          callback(null);
+        });
+    };
+   
+    var flow = async.seq(convertJpgToVideo, createReverseVideo, concatVideo, uploadS3, deleteTmps); 
+    flow({
+          outFilename: tmpFilename+'.mp4',
+          oriFilename: tmpFilename+'Ori',
+          revFilename: tmpFilename+'Rev',
+          input: cdnUrl+keyPrefix+'%d.jpg'
+        }, 
+        function(err, res){
+          if(err){return job.reportException(err);}
+          job.workComplete(JSON.stringify({
+            status: 'success',
+            videoType: 'mp4'  
+          }));
+    });
 
   } catch (err) {
     job.reportException(err);
