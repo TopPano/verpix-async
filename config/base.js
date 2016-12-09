@@ -10,7 +10,7 @@ module.exports = {
   },
   store: {
     bucket: 'MOCKUP',
-    mockupBucketPath: null,
+    mockupBucketPath: '/home/uniray7/S3Mock',
     mockupServerPort: 6559
   },
   servers: [ { host: 'localhost', port: 4730 } ],

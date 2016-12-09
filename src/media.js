@@ -21,55 +21,94 @@ if (config.store.bucket === 'MOCKUP') {
   store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
 }
 
-var DEFAULT_PANO_DIMENSION_FOR_MOBILE = {
-  width: 4096,
-  height: 2048
-};
+var DEFAULT_PANO_DIMENSIONS = [
+  {width: 8192, height: 4096, tiles: 8},
+  {width: 4096, height: 2048, tiles: 8},
+  {width: 2048, height: 1024, tiles: 2}
+] 
 
 var inflate = P.promisify(require('zlib').inflate);
 
 var processImageAsync = P.promisify(function(params, callback) {
-  async.parallel({
-    webImages: function(callback) {
-      tilizeImageAndCreateObject(params.image, {
+  var results = [];
+  var processQ = async.queue(function(task, cb) {
+    if (task.cmd === 'tilize') {
+      tilizeImageAndCreateObject(task.image, {
         type: 'pano',
-        width: params.width,
-        height: params.height,
-        mediaId: params.mediaId,
-        shardingKey: params.shardingKey
+        width: task.width,
+        height: task.height,
+        tiles: task.tiles,
+        mediaId: task.mediaId,
+        shardingKey: task.shardingKey
       }, function(err, result) {
-        if (err) { return callback(err); }
-        callback(null, result);
+        if (err) { return cb(err); }
+        results.push({size: task.width + 'X' + task.height, tiles: task.tiles});
+        cb();
       });
-    },
-    mobileImages: function(callback) {
-      sharp(params.image)
-      .resize(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width, DEFAULT_PANO_DIMENSION_FOR_MOBILE.height)
+     }
+    else if (task.cmd === 'resizeAndTilize') {
+      sharp(task.image)
+      .resize(task.width, task.height)
       .toBuffer(function(err, buffer) {
-        if (err) { return callback(err); }
+        if (err) { return cb(err); }
         tilizeImageAndCreateObject(buffer, {
           type: 'pano',
-          width: DEFAULT_PANO_DIMENSION_FOR_MOBILE.width,
-          height: DEFAULT_PANO_DIMENSION_FOR_MOBILE.height,
-          mediaId: params.mediaId,
-          shardingKey: params.shardingKey
+          width: task.width,
+          height: task.height,
+          tiles: task.tiles,
+          mediaId: task.mediaId,
+          shardingKey: task.shardingKey
         }, function(err, result) {
-          if (err) { return callback(err); }
-            callback(null, result);
-
+          if (err) { return cb(err); }
+          results.push({size: task.width + 'X' + task.height, tiles: task.tiles});
+          cb();
         });
       });
     }
-  }, function(err, results) {
-    if (err) { return callback(err); }
-    results.quality = [];
-    results.quality.push(params.width+ 'X' + params.height);  
-    results.quality.push(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width+ 'X' +DEFAULT_PANO_DIMENSION_FOR_MOBILE.height);  
+  }, 2); 
+
+  processQ.drain = function(result) {
+    results.sort(function(a, b) {
+      var keyA = a.size,
+          keyB = b.size;
+      if(keyA < keyB) return 1;
+      if(keyA > keyB) return -1;
+      return 0;
+    });
     callback(null, results);
-  });
+  }
+ 
+  DEFAULT_PANO_DIMENSIONS.forEach(function(defaultDim, index, array) {
+    var task = {};
+    task.image = params.image;
+    task.type = 'pano';      
+    task.width = defaultDim.width;
+    task.height = defaultDim.height;
+    task.tiles = defaultDim.tiles;
+    task.mediaId = params.mediaId;
+    task.shardingKey = params.shardingKey;
+
+    if (params.width < defaultDim.width){
+      // do nothing just pass
+      // TODO: maybe have to check the img is 2:1? if not, resize.
+      // and think about when the img is too small, how should be tilized?
+    }
+    else if(params.width == defaultDim.width && params.height == defaultDim.height) {
+      // do tilize directliy
+      task.cmd = 'tilize';
+      processQ.push(task, function(err) {
+        if(err) {callback(err);}})
+    }
+    else {
+      // downsize and tilize
+      task.cmd = 'resizeAndTilize';
+      processQ.push(task, function(err) {
+        if(err) {callback(err);}})
+    }
+  });  
 
   function tilizeImageAndCreateObject(imgBuf, params, callback) {
-    var tiles = calTileGeometries(params.width, params.height)
+    var tiles = calTileGeometries(params.width, params.height, params.tiles);
     async.map(tiles, function(tile, callback) {
       sharp(imgBuf)
       .extract({left:tile.x, top:tile.y, width:tile.width, height:tile.height})
@@ -77,7 +116,7 @@ var processImageAsync = P.promisify(function(params, callback) {
       .toFormat('jpeg')
       .toBuffer( function(err, buffer) {
         if (err) { return callback(err); }
-        var filename = (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
+        var filename = tile.idx + '.jpg'
         var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
         store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
@@ -89,24 +128,45 @@ var processImageAsync = P.promisify(function(params, callback) {
       });
     }, callback);
 
-    function calTileGeometries(imgWidth, imgHeight) {
-      var tileWidth = imgWidth / 4;
-      var tileHeight = imgHeight / 2;
-      var tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
-        var geometry = {};
-        geometry.idx = i;
-        geometry.width = tileWidth;
-        geometry.height = tileHeight;
-        if (i < 4) {
+    function calTileGeometries(imgWidth, imgHeight, tiles) {
+      if (tiles == 8) {
+        var tileWidth = imgWidth / 4;
+        var tileHeight = imgHeight / 2;
+        var tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
+          var geometry = {};
+          geometry.idx = i;
+          geometry.width = tileWidth;
+          geometry.height = tileHeight;
+          if (i < 4) {
+            geometry.x = i * tileWidth;
+            geometry.y = 0;
+          } else {
+            geometry.x = (i % 4) * tileWidth;
+            geometry.y = tileHeight;
+          }
+          return geometry;
+        });
+        return tileGeometries;
+      }
+      else if (tiles == 2) {
+        var tileWidth = imgWidth / 2;
+        var tileHeight = imgHeight;
+        var tileGeometries = [0, 1].map(function(i) {
+          var geometry = {};
+          geometry.idx = i;
+          geometry.width = tileWidth;
+          geometry.height = tileHeight;
           geometry.x = i * tileWidth;
           geometry.y = 0;
-        } else {
-          geometry.x = (i % 4) * tileWidth;
-          geometry.y = tileHeight;
-        }
-        return geometry;
-      });
-      return tileGeometries;
+          return geometry;
+        });
+        return tileGeometries;
+      } 
+      else { // just only one tiles, that is, no tile
+        var tileGeometries = [];
+        tileGeometries.push({idx:0, x:0, y:0, width: imgWidth, height: imgHeight});
+        return tileGeometries;
+      }// if-else
     }
   }
 });
@@ -147,7 +207,7 @@ var mediaProcessingPanoPhoto = function(job) {
     })
     .then(function(result) {
       response = merge({}, response, {
-        quality: result.quality
+        quality: result
       });
       job.workComplete(JSON.stringify(response));
     })
