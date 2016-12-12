@@ -14,11 +14,14 @@ ENV PATH      $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 RUN npm install -g pm2
 
 # install python2.7 for sharp, which is node_module of verpix-async
+RUN apt-get update
 RUN apt-get install -y python
 RUN apt-get install -y software-properties-common
 RUN add-apt-repository ppa:mc3man/trusty-media
 RUN apt-get update
 RUN apt-get install -y ffmpeg
+
+RUN apt-get install -y libimage-exiftool-perl
 
 ADD . /home/verpix/verpix-async
 RUN chown -R verpix:verpix /home/verpix/verpix-async
