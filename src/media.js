@@ -8,6 +8,7 @@ var ffmpeg = require('fluent-ffmpeg');
 var fs = require('fs');
 var config = require('../config');
 var randomstring = require("randomstring");
+const spawn = require('child_process').spawn;
 
 var ObjectStore = require('../object-store');
 var store;
@@ -171,6 +172,26 @@ var processImageAsync = P.promisify(function(params, callback) {
   }
 });
 
+var addExifTag = P.promisify(function(srcImgBuf, tag, callback){
+  var tmpFilename = '/tmp/'+randomstring.generate(6);
+  fs.writeFile(tmpFilename, srcImgBuf, (err) => {
+    if(err) {return callback(err);}
+    const exiftool = spawn('exiftool', [tag, tmpFilename]);
+    exiftool.stderr.on('data', (data) => {return callback(data);})
+    exiftool.on('close', (code) => {
+      if(code != 0) {return callback('Exiftool code: '+code.toString());}
+      fs.readFile(tmpFilename, (err, data) =>{
+        if(err) {return callback(err);}
+        fs.unlinkSync(tmpFilename);
+        fs.unlinkSync(tmpFilename + '_original');
+        callback(null, data);
+      });
+
+    });
+  })
+});
+
+
 var mediaProcessingPanoPhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
@@ -180,34 +201,39 @@ var mediaProcessingPanoPhoto = function(job) {
       type: params.type,
       mediaId: params.mediaId
     };
-    var srcImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
-                         'src' + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
-    store.createPromised(srcImgKeyArr, srcImgBuf, {
-      contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
-    })
-    .then(function(result) { // add srcURL and srcDownUrl
-      var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
-                             'thumb.jpg' ];
-      return store.createPromised(thumbImgKeyArr, thumbImgBuf);
-    })
-    .then(function(result) {
+
+    var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                           'thumb.jpg' ];
+    store.createPromised(thumbImgKeyArr, thumbImgBuf)
+    .then(function() {
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
       }
       return P.resolve(srcImgBuf);
     })
     .then(function(imgBuf) {
-      return processImageAsync({
-        image: imgBuf,
-        width: params.image.width,
-        height: params.image.height,
-        mediaId: params.mediaId,
-        shardingKey: params.shardingKey
-      });
+      var imgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                         'src.jpg' ];
+      return P.all([
+        addExifTag(imgBuf, '-ProjectionType=equirectangular')
+        .then((panoImgBuf) => {
+          store.createPromised(
+            imgKeyArr, 
+            panoImgBuf, 
+            {contentType: 'image/jpeg'})
+        }),
+        processImageAsync({
+          image: imgBuf,
+          width: params.image.width,
+          height: params.image.height,
+          mediaId: params.mediaId,
+          shardingKey: params.shardingKey
+        })
+      ]);
     })
     .then(function(result) {
       response = merge({}, response, {
-        quality: result
+        quality: result[1]
       });
       job.workComplete(JSON.stringify(response));
     })
