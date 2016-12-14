@@ -88,9 +88,16 @@ var processImageAsync = P.promisify(function(params, callback) {
     task.tiles = defaultDim.tiles;
     task.mediaId = params.mediaId;
     task.shardingKey = params.shardingKey;
-
     if (params.width < defaultDim.width){
-      // do nothing just pass
+      // if the photo is smaller than 2048
+      if (index == (array.length-1)) {
+        task.width = params.width;
+        task.height = params.height;
+        task.cmd = 'tilize';
+        processQ.push(task, function(err) {
+          if(err) {callback(err);}
+        });
+      }
       // TODO: maybe have to check the img is 2:1? if not, resize.
       // and think about when the img is too small, how should be tilized?
     }
@@ -130,6 +137,8 @@ var processImageAsync = P.promisify(function(params, callback) {
     }, callback);
 
     function calTileGeometries(imgWidth, imgHeight, tiles) {
+      imgWidth = Number(imgWidth);
+      imgHeight = Number(imgHeight);
       if (tiles == 8) {
         var tileWidth = imgWidth / 4;
         var tileHeight = imgHeight / 2;
@@ -201,7 +210,6 @@ var mediaProcessingPanoPhoto = function(job) {
       type: params.type,
       mediaId: params.mediaId
     };
-
     var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
                            'thumb.jpg' ];
     store.createPromised(thumbImgKeyArr, thumbImgBuf)
