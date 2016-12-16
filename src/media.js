@@ -23,9 +23,9 @@ if (config.store.bucket === 'MOCKUP') {
 }
 
 var DEFAULT_PANO_DIMENSIONS = [
-  {width: 8192, height: 4096, tiles: 8},
-  {width: 4096, height: 2048, tiles: 8},
-  {width: 2048, height: 1024, tiles: 2}
+  {width: 8000, height: 4000, tiles: 8},
+  {width: 4000, height: 2000, tiles: 8},
+  {width: 2000, height: 1000, tiles: 2}
 ] 
 
 var inflate = P.promisify(require('zlib').inflate);
