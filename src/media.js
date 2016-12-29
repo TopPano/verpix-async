@@ -181,7 +181,7 @@ var processImageAsync = P.promisify(function(params, callback) {
   }
 });
 
-var addExifTag = P.promisify(function(srcImgBuf, tag, callback){
+var addExifTag = P.promisify(function(srcImgBuf, tag, callback) {
   var tmpFilename = '/tmp/'+randomstring.generate(6);
   fs.writeFile(tmpFilename, srcImgBuf, (err) => {
     if(err) {return callback(err);}
@@ -200,6 +200,23 @@ var addExifTag = P.promisify(function(srcImgBuf, tag, callback){
   })
 });
 
+var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
+  var sharpObj;
+  if(width > 4000) {
+    sharpObj = sharp(imgBuf).resize(4000, 2000);
+  }
+  else {
+    sharpObj = sharp(imgBuf);
+  }
+
+  sharpObj.jpeg({quality:90})
+   .toBuffer((err, downsizeBuf) => {
+     addExifTag(downsizeBuf, '-ProjectionType=equirectangular')
+     .then((exifBuf) => { 
+       callback(null, exifBuf);
+     })
+   }) 
+});
 
 var mediaProcessingPanoPhoto = function(job) {
   try {
@@ -222,20 +239,26 @@ var mediaProcessingPanoPhoto = function(job) {
     .then(function(imgBuf) {
       var imgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
                          'src.jpg' ];
+      var shareKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                         'share.jpg' ];
       return P.all([
-        addExifTag(imgBuf, '-ProjectionType=equirectangular')
-        .then((panoImgBuf) => {
-          store.createPromised(
-            imgKeyArr, 
-            panoImgBuf, 
-            {contentType: 'image/jpeg'})
-        }),
+        store.createPromised(
+          imgKeyArr, 
+          imgBuf, 
+          {contentType: 'image/jpeg'}),
         processImageAsync({
           image: imgBuf,
           width: params.image.width,
           height: params.image.height,
           mediaId: params.mediaId,
           shardingKey: params.shardingKey
+        }),
+        createShareImg(imgBuf, params.image.width, params.image.height)
+          .then((shareBuf) => {
+            store.createPromised(
+              shareKeyArr, 
+              shareBuf, 
+              {contentType: 'image/jpeg'})
         })
       ]);
     })
