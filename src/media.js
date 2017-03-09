@@ -8,6 +8,7 @@ var ffmpeg = require('fluent-ffmpeg');
 var fs = require('fs');
 var config = require('../config');
 var randomstring = require("randomstring");
+const spawn = require('child_process').spawn;
 
 var ObjectStore = require('../object-store');
 var store;
@@ -17,59 +18,112 @@ if (config.store.bucket === 'MOCKUP') {
     mockupBucketPath: config.store.mockupBucketPath,
     mockupServerPort: config.store.mockupServerPort
   }), { suffix: 'Promised' });
-} else {
+} 
+else {
   store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
 }
 
-var DEFAULT_PANO_DIMENSION_FOR_MOBILE = {
-  width: 4096,
-  height: 2048
-};
+var RESPONSIVE_PANO_DIMENSIONS = [
+  {width: 8000, height: 4000, tiles: 8},
+  {width: 4000, height: 2000, tiles: 8},
+  {width: 2000, height: 1000, tiles: 2}
+] 
 
 var inflate = P.promisify(require('zlib').inflate);
 
 var processImageAsync = P.promisify(function(params, callback) {
-  async.parallel({
-    webImages: function(callback) {
-      tilizeImageAndCreateObject(params.image, {
+  var results = [];
+  var processQ = async.queue(function(task, cb) {
+    if (task.cmd === 'tilize') {
+      tilizeImageAndCreateObject(task.image, {
         type: 'pano',
-        width: params.width,
-        height: params.height,
-        mediaId: params.mediaId,
-        shardingKey: params.shardingKey
+        width: task.width,
+        height: task.height,
+        tiles: task.tiles,
+        mediaId: task.mediaId,
+        shardingKey: task.shardingKey
       }, function(err, result) {
-        if (err) { return callback(err); }
-        callback(null, result);
+        if (err) { return cb(err); }
+        results.push({size: task.width + 'X' + task.height, tiles: task.tiles});
+        cb();
       });
-    },
-    mobileImages: function(callback) {
-      sharp(params.image)
-      .resize(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width, DEFAULT_PANO_DIMENSION_FOR_MOBILE.height)
+     }
+    else if (task.cmd === 'resizeAndTilize') {
+      sharp(task.image)
+      .resize(task.width, task.height)
       .toBuffer(function(err, buffer) {
-        if (err) { return callback(err); }
+        if (err) { return cb(err); }
         tilizeImageAndCreateObject(buffer, {
           type: 'pano',
-          width: DEFAULT_PANO_DIMENSION_FOR_MOBILE.width,
-          height: DEFAULT_PANO_DIMENSION_FOR_MOBILE.height,
-          mediaId: params.mediaId,
-          shardingKey: params.shardingKey
+          width: task.width,
+          height: task.height,
+          tiles: task.tiles,
+          mediaId: task.mediaId,
+          shardingKey: task.shardingKey
         }, function(err, result) {
-          if (err) { return callback(err); }
-            callback(null, result);
-
+          if (err) { return cb(err); }
+          results.push({size: task.width + 'X' + task.height, tiles: task.tiles});
+          cb();
         });
       });
     }
-  }, function(err, results) {
-    if (err) { return callback(err); }
-    results.quality = [];
-    results.quality.push(params.width+ 'X' + params.height);  
-    results.quality.push(DEFAULT_PANO_DIMENSION_FOR_MOBILE.width+ 'X' +DEFAULT_PANO_DIMENSION_FOR_MOBILE.height);  
+  }, 2); 
+
+  processQ.drain = function(result) {
+    results.sort(function(a, b) {
+      var keyA = a.size,
+          keyB = b.size;
+      if(keyA < keyB) return 1;
+      if(keyA > keyB) return -1;
+      return 0;
+    });
     callback(null, results);
-  });
+  }
+
+  /** 
+   * Determine which tilize and resize options in RESPONSIVE_PANO_DIMENSIONS should be chosen.
+   * It depends on image's size.
+   */
+  RESPONSIVE_PANO_DIMENSIONS.forEach(function(defaultDim, index, array) {
+    var task = {};
+    task.image = params.image;
+    task.type = 'pano';      
+    task.width = defaultDim.width;
+    task.height = defaultDim.height;
+    task.tiles = defaultDim.tiles;
+    task.mediaId = params.mediaId;
+    task.shardingKey = params.shardingKey;
+    if (params.width < defaultDim.width){
+      // if the photo is smaller than 2048
+      if (index == (array.length-1)) {
+        task.width = params.width;
+        task.height = params.height;
+        task.cmd = 'tilize';
+        processQ.push(task, function(err) {
+          if(err) {callback(err);}
+        });
+      }
+      // TODO: maybe have to check the img is 2:1? if not, resize.
+      // and think about when the img is too small, how should be tilized?
+    }
+    else if(params.width == defaultDim.width && params.height == defaultDim.height) {
+      // do tilize directliy
+      task.cmd = 'tilize';
+      processQ.push(task, function(err) {
+        if(err) {callback(err);}
+      });
+    }
+    else {
+      // downsize and tilize
+      task.cmd = 'resizeAndTilize';
+      processQ.push(task, function(err) {
+        if(err) {callback(err);}
+      });
+    }
+  });  
 
   function tilizeImageAndCreateObject(imgBuf, params, callback) {
-    var tiles = calTileGeometries(params.width, params.height)
+    var tiles = calTileGeometries(params.width, params.height, params.tiles);
     async.map(tiles, function(tile, callback) {
       sharp(imgBuf)
       .extract({left:tile.x, top:tile.y, width:tile.width, height:tile.height})
@@ -77,7 +131,7 @@ var processImageAsync = P.promisify(function(params, callback) {
       .toFormat('jpeg')
       .toBuffer( function(err, buffer) {
         if (err) { return callback(err); }
-        var filename = (params.projectMethod ? params.projectMethod : 'equirectangular') + '_' + tile.idx + '.jpg'
+        var filename = tile.idx + '.jpg'
         var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
         store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
@@ -89,26 +143,86 @@ var processImageAsync = P.promisify(function(params, callback) {
       });
     }, callback);
 
-    function calTileGeometries(imgWidth, imgHeight) {
-      var tileWidth = imgWidth / 4;
-      var tileHeight = imgHeight / 2;
-      var tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
-        var geometry = {};
-        geometry.idx = i;
-        geometry.width = tileWidth;
-        geometry.height = tileHeight;
-        if (i < 4) {
+    function calTileGeometries(imgWidth, imgHeight, tiles) {
+      imgWidth = Number(imgWidth);
+      imgHeight = Number(imgHeight);
+      if (tiles == 8) {
+        var tileWidth = imgWidth / 4;
+        var tileHeight = imgHeight / 2;
+        var tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
+          var geometry = {};
+          geometry.idx = i;
+          geometry.width = tileWidth;
+          geometry.height = tileHeight;
+          if (i < 4) {
+            geometry.x = i * tileWidth;
+            geometry.y = 0;
+          } else {
+            geometry.x = (i % 4) * tileWidth;
+            geometry.y = tileHeight;
+          }
+          return geometry;
+        });
+        return tileGeometries;
+      }
+      else if (tiles == 2) {
+        var tileWidth = imgWidth / 2;
+        var tileHeight = imgHeight;
+        var tileGeometries = [0, 1].map(function(i) {
+          var geometry = {};
+          geometry.idx = i;
+          geometry.width = tileWidth;
+          geometry.height = tileHeight;
           geometry.x = i * tileWidth;
           geometry.y = 0;
-        } else {
-          geometry.x = (i % 4) * tileWidth;
-          geometry.y = tileHeight;
-        }
-        return geometry;
-      });
-      return tileGeometries;
+          return geometry;
+        });
+        return tileGeometries;
+      } 
+      else { // just only one tiles, that is, no tile
+        var tileGeometries = [];
+        tileGeometries.push({idx:0, x:0, y:0, width: imgWidth, height: imgHeight});
+        return tileGeometries;
+      }// if-else
     }
   }
+});
+
+var addExifTag = P.promisify(function(srcImgBuf, tag, callback) {
+  var tmpFilename = '/tmp/'+randomstring.generate(6);
+  fs.writeFile(tmpFilename, srcImgBuf, (err) => {
+    if(err) {return callback(err);}
+    const exiftool = spawn('exiftool', [tag, tmpFilename]);
+    exiftool.stderr.on('data', (data) => {return callback(data);})
+    exiftool.on('close', (code) => {
+      if(code != 0) {return callback('Exiftool code: '+code.toString());}
+      fs.readFile(tmpFilename, (err, data) =>{
+        if(err) {return callback(err);}
+        fs.unlinkSync(tmpFilename);
+        fs.unlinkSync(tmpFilename + '_original');
+        callback(null, data);
+      });
+
+    });
+  })
+});
+
+var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
+  var sharpObj;
+  if(width > 4000) {
+    sharpObj = sharp(imgBuf).resize(4000, 2000);
+  }
+  else {
+    sharpObj = sharp(imgBuf);
+  }
+
+  sharpObj.jpeg({quality:90})
+   .toBuffer((err, downsizeBuf) => {
+     addExifTag(downsizeBuf, '-ProjectionType=equirectangular')
+     .then((exifBuf) => { 
+       callback(null, exifBuf);
+     })
+   }) 
 });
 
 var mediaProcessingPanoPhoto = function(job) {
@@ -120,46 +234,44 @@ var mediaProcessingPanoPhoto = function(job) {
       type: params.type,
       mediaId: params.mediaId
     };
-    var srcImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
-                         'src' + (params.image.hasZipped ? '.jpg.zip' : '.jpg') ];
-    store.createPromised(srcImgKeyArr, srcImgBuf, {
-      contentType: params.image.hasZipped ? 'application/zip' : 'image/jpeg'
-    })
-    .then(function(result) { // add srcURL and srcDownUrl
-//      response = merge({}, response, {
-//          src:{
-//              srcUrl: result.location,
-//              srcDownloadUrl: result.location
-//          }
-//      });
-      var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
-                             'thumb.jpg' ];
-      return store.createPromised(thumbImgKeyArr, thumbImgBuf);
-    })
-    .then(function(result) {
-//      response = merge({}, response, {
-//        thumbUrl: result.location,
-//        thumbDownloadUrl: result.location
-//      });
+    var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                           'thumb.jpg' ];
+    store.createPromised(thumbImgKeyArr, thumbImgBuf)
+    .then(function() {
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
       }
       return P.resolve(srcImgBuf);
     })
     .then(function(imgBuf) {
-      return processImageAsync({
-        image: imgBuf,
-        width: params.image.width,
-        height: params.image.height,
-        mediaId: params.mediaId,
-        shardingKey: params.shardingKey
-      });
+      var imgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                         'src.jpg' ];
+      var shareKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
+                         'share.jpg' ];
+      return P.all([
+        store.createPromised(
+          imgKeyArr, 
+          imgBuf, 
+          {contentType: 'image/jpeg'}),
+        processImageAsync({
+          image: imgBuf,
+          width: params.image.width,
+          height: params.image.height,
+          mediaId: params.mediaId,
+          shardingKey: params.shardingKey
+        }),
+        createShareImg(imgBuf, params.image.width, params.image.height)
+          .then((shareBuf) => {
+            store.createPromised(
+              shareKeyArr, 
+              shareBuf, 
+              {contentType: 'image/jpeg'})
+        })
+      ]);
     })
     .then(function(result) {
       response = merge({}, response, {
-//        srcTiledImages: result.webImages,
-//        srcMobileTiledImages: result.mobileImages
-        quality: result.quality
+        quality: result[1]
       });
       job.workComplete(JSON.stringify(response));
     })
@@ -378,38 +490,104 @@ var convertImgsToVideo = function(job) {
     var keyPrefix = mediaObj.content.shardingKey+'/media/'+mediaObj.sid+'/';
     if (mediaObj.type === 'livePhoto'){
       keyPrefix += 'live/';
-    } 
+    }
     keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';  
     var cdnUrl = mediaObj.content.cdnUrl;  
-    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid+'.mp4';
-    console.log(tmpFilename);
+    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid;
 
-    ffmpeg()
-    .input( cdnUrl+keyPrefix+'%d.jpg' )
-    .inputFPS(25)
-    .fps(25)
-    .on('end', function() {
-      // console.log('video has been converted successfully');
-      fs.readFile(tmpFilename, function(err, data){
+    
+    var convertJpgToVideo = function(params, callback) {
+      var originalStream = fs.createWriteStream(params.oriFilename);
+      ffmpeg()
+      .input(params.input)
+      .inputFPS(25)
+      .fps(25)
+      .videoCodec('libx264')
+      .format('avi')
+      .on('end', function() {
+        callback(null, params);
+      })
+      .pipe(originalStream);
+    };
+    
+    var createReverseVideo = function(params, callback) {
+      var reversedStream = fs.createWriteStream(params.revFilename);
+      ffmpeg()
+      .input(params.oriFilename)
+      .inputFPS(25)
+      .videoCodec('libx264')
+      .videoFilters('reverse')
+      .fps(25)
+      .format('avi')
+      .on('end', function() {
+        callback(null, params);
+      })
+      .pipe(reversedStream);
+    };
+    
+    var concatVideo = function(params, callback) {
+      ffmpeg()
+      .input(params.oriFilename)
+      .input(params.revFilename)
+      .format('mp4')
+      .on('end', function(){
+        callback(null, params);
+      })
+      .mergeToFile(params.outFilename, './')
+    };
+ 
+    var uploadS3 = function(params, callback) {
+      fs.readFile(params.outFilename, function(err, data){
         if(err){ return job.reportException(err); }  
         var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
-        store.create(keyArr, data, function(err, result) {
-          if (err) { return job.reportException(err); }
-          fs.unlink(tmpFilename, function(err, data){
-            if (err) { return job.reportException(err); }
-            job.workComplete(JSON.stringify({
-              status: 'success',
-              videoType: 'mp4'  
-            }));
-          });  
+        store.create(keyArr, data, {contentType: 'video/mp4'}, function(err, result) {
+          if (err) {return callback(err);}
+          callback(null, params);
         });
       });
-    })
-    .on('error', function(err) {
-      //console.error(err);
-    })
-    .save(tmpFilename);
-           
+    };
+ 
+    var deleteTmps = function(params, callback) {
+      async.parallel([
+        (cb) => { 
+          fs.unlink(params.oriFilename, function(err, data){
+            if (err) { return cb(err);}
+            cb(null);
+          });  
+        },
+        (cb) => { 
+          fs.unlink(params.revFilename, function(err, data){
+            if (err) { return cb(err);}
+            cb(null);
+          });  
+        },
+        (cb) => { 
+          fs.unlink(params.outFilename, function(err, data){
+            if (err) { return cb(err);}
+            cb(null);
+          });  
+        }],
+
+        (err, res) =>{
+          if(err) {return callback(err);}
+          callback(null);
+        });
+    };
+   
+    var flow = async.seq(convertJpgToVideo, createReverseVideo, concatVideo, uploadS3, deleteTmps); 
+    flow({
+          outFilename: tmpFilename+'.mp4',
+          oriFilename: tmpFilename+'Ori',
+          revFilename: tmpFilename+'Rev',
+          input: cdnUrl+keyPrefix+'%d.jpg'
+        }, 
+        function(err, res){
+          if(err){return job.reportException(err);}
+          job.workComplete(JSON.stringify({
+            status: 'success',
+            videoType: 'mp4'  
+          }));
+    });
 
   } catch (err) {
     job.reportException(err);

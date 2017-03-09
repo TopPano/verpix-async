@@ -39,13 +39,13 @@ $ npm install
 * Build image
 
     ```sh
-    $ docker build -t verpix-async :1.0.0 ./
+    $ docker build -t verpix-async:1.0.0 --build-arg AWS_KEY=$KEY --build-arg AWS_SECRET=$SECRET --build-arg STORE_BKT=$BKT_NAME --build-arg GEARMAN_HOST=$IP ./
     ```
 
 * Create container
 
     ```sh
-    $ docker create --restart always -v $aws_cred_path:/root/.aws --env STORE_BKT='$BKT_NAME' --add-host=gearmand:$IP $imageId
+    $ docker create --restart always $imageId
     ```
 
 * Start container
