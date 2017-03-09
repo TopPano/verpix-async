@@ -18,11 +18,12 @@ if (config.store.bucket === 'MOCKUP') {
     mockupBucketPath: config.store.mockupBucketPath,
     mockupServerPort: config.store.mockupServerPort
   }), { suffix: 'Promised' });
-} else {
+} 
+else {
   store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
 }
 
-var DEFAULT_PANO_DIMENSIONS = [
+var RESPONSIVE_PANO_DIMENSIONS = [
   {width: 8000, height: 4000, tiles: 8},
   {width: 4000, height: 2000, tiles: 8},
   {width: 2000, height: 1000, tiles: 2}
@@ -78,8 +79,12 @@ var processImageAsync = P.promisify(function(params, callback) {
     });
     callback(null, results);
   }
- 
-  DEFAULT_PANO_DIMENSIONS.forEach(function(defaultDim, index, array) {
+
+  /** 
+   * Determine which tilize and resize options in RESPONSIVE_PANO_DIMENSIONS should be chosen.
+   * It depends on image's size.
+   */
+  RESPONSIVE_PANO_DIMENSIONS.forEach(function(defaultDim, index, array) {
     var task = {};
     task.image = params.image;
     task.type = 'pano';      
@@ -105,13 +110,15 @@ var processImageAsync = P.promisify(function(params, callback) {
       // do tilize directliy
       task.cmd = 'tilize';
       processQ.push(task, function(err) {
-        if(err) {callback(err);}})
+        if(err) {callback(err);}
+      });
     }
     else {
       // downsize and tilize
       task.cmd = 'resizeAndTilize';
       processQ.push(task, function(err) {
-        if(err) {callback(err);}})
+        if(err) {callback(err);}
+      });
     }
   });  
 
