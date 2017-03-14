@@ -27,7 +27,7 @@ var RESPONSIVE_PANO_DIMENSIONS = [
   {width: 8000, height: 4000, tiles: 8},
   {width: 4000, height: 2000, tiles: 8},
   {width: 2000, height: 1000, tiles: 2}
-] 
+];
 
 var inflate = P.promisify(require('zlib').inflate);
 
@@ -204,9 +204,14 @@ var addExifTag = P.promisify(function(srcImgBuf, tag, callback) {
       });
 
     });
-  })
+  });
 });
 
+/*
+ * create a resized image (smaller than 4000X2000) 
+ * with EXIF Tag "ProjectionType=equirectangular" 
+ * for sharing to FB 
+ */
 var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
   var sharpObj;
   if(width > 4000) {
@@ -221,8 +226,8 @@ var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
      addExifTag(downsizeBuf, '-ProjectionType=equirectangular')
      .then((exifBuf) => { 
        callback(null, exifBuf);
-     })
-   }) 
+     });
+   });
 });
 
 var mediaProcessingPanoPhoto = function(job) {

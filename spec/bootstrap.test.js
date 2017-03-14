@@ -1,21 +1,12 @@
 'use strict';
-var commandExists = require('command-exists');
+var commandExists = require('command-exists').sync;
+var assert = require('assert');
 
 // Global before hook
 before(function(done) {
-  commandExists('exiftool', function(err, command){
-    if(err) {
-      done(err); 
-    }
-    else if(!command) {
-      done(new Error('exiftool: command not found, plz install'));
-    }
-    else {
-      done();
-    }
-  });
-
-
+  assert.equal(commandExists('exiftool'), true, 'exiftool: command not found, plz install exiftool');
+  assert.equal(commandExists('compare'), true, 'compare: command not found, plz install ImageMagick');
+  done();
 });
 
 
