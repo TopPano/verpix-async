@@ -7,9 +7,8 @@ var sharp = require('sharp');
 var ffmpeg = require('fluent-ffmpeg');
 var fs = require('fs');
 var config = require('../config');
-var randomstring = require("randomstring");
+var randomstring = require('randomstring');
 const spawn = require('child_process').spawn;
-
 var ObjectStore = require('../object-store');
 var store;
 if (config.store.bucket === 'MOCKUP') {
@@ -18,7 +17,8 @@ if (config.store.bucket === 'MOCKUP') {
     mockupBucketPath: config.store.mockupBucketPath,
     mockupServerPort: config.store.mockupServerPort
   }), { suffix: 'Promised' });
-} 
+}
+
 else {
   store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
 }
@@ -193,9 +193,9 @@ var addExifTag = P.promisify(function(srcImgBuf, tag, callback) {
   fs.writeFile(tmpFilename, srcImgBuf, (err) => {
     if(err) {return callback(err);}
     const exiftool = spawn('exiftool', [tag, tmpFilename]);
-    exiftool.stderr.on('data', (data) => {return callback(data);})
+    exiftool.stderr.on('data', (data) => {return callback(data);});
     exiftool.on('close', (code) => {
-      if(code != 0) {return callback('Exiftool code: '+code.toString());}
+      if(code !== 0) {return callback('Exiftool code: '+code.toString());}
       fs.readFile(tmpFilename, (err, data) =>{
         if(err) {return callback(err);}
         fs.unlinkSync(tmpFilename);
@@ -606,3 +606,17 @@ function addTo(worker) {
 module.exports = {
   addTo: addTo
 };
+
+if (process.env.NODE_ENV === 'test') {
+  module.exports = {
+    mediaProcessingPanoPhoto: mediaProcessingPanoPhoto,
+    mediaProcessingLivePhoto: mediaProcessingLivePhoto,
+    deleteMediaImages: deleteMediaImages,
+    convertImgsToVideo: convertImgsToVideo,
+    createShareImg: createShareImg,
+    addExifTag: addExifTag,
+    deleteMediaImages: deleteMediaImages
+  };
+ 
+}
+
