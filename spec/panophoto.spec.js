@@ -10,53 +10,68 @@ var panophoto = require('../src/media.js');
 const exec = require('child_process').exec;
 
 describe('Panophoto:', function() {
-  //describe('Test processPanoPhoto()', function() {
+  describe('Test processPanoPhoto()', function() {
+    it('should store resized & tiled panophoto path specified by config', function () {
+      // prepare for input test data
+      var srcFileName = './spec/fixtures/panophoto/src.jpg';
+      var thumbFileName = './spec/fixtures/panophoto/thumb.jpg';
+      var metaFileName = './spec/fixtures/panophoto/sample.json';
+
+      var srcImage = fs.readFileSync(srcFileName);
+      var metaObj = JSON.parse(fs.readFileSync(metaFileName));
+      var srcSize = sizeOf(srcFileName);
+      var params = {
+        type: metaObj.type, 
+        mediaId: metaObj._id,
+        image: {  
+                  width: srcSize.width,
+                  height: srcSize.height,
+                  buffer: (new Buffer(srcImage)).toString('base64'),
+                  hasZipped: false
+               },
+        thumbnail: { buffer: (new Buffer(fs.readFileSync(thumbFileName))).toString('base64') },
+        shardingKey : metaObj.content.shardingKey 
+      };
+      
+      // start testing
+      return panophoto.processPanoPhoto(params)
+      .then(function(result){
+        // check the generated metadata is same with sample.json
+        assert.deepEqual(result[1], metaObj.content.quality, 'generated metadata is not same with sample.json');
+        
+        // check the generated images are same with groundtruth
+        // gen imagePairList for compare
+        var imagePairList = [];
+        var qualities = metaObj.content.quality;
+        for(var i in qualities){
+          for (var j=0; j<qualities[i].tiles; j++){
+            imagePairList.push([config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/pano/'+qualities[i].size+'/'+j.toString()+'.jpg',
+                                './spec/fixtures/panophoto/'+qualities[i].size+'/'+j.toString()+'.jpg']);
+          }
+        }
+
+        imagePairList.push([config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/pano/share.jpg',
+                            './spec/fixtures/panophoto/share.jpg']);
+        imagePairList.push([config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/pano/src.jpg',
+                            './spec/fixtures/panophoto/src.jpg']);
+        imagePairList.push([config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/pano/thumb.jpg',
+                            './spec/fixtures/panophoto/thumb.jpg']);
+        
+        return imageUtil.diff.areSamePromised(imagePairList)
+        .then((areSame) => {
+          assert.equal(areSame, true, 'generated images are not same with groundtruth');
+        });
+      });
+    });
+  });
+
+  //describe('Test deleteMediaImages() for panophoto', function() {
   //  it('should store resized & tiled panophoto path specified by config', function (done) {
-  //    // prepare for input test data
-  //    var srcFileName = './spec/fixtures/panophoto/src.jpg';
-  //    var thumbFileName = './spec/fixtures/panophoto/thumb.jpg';
-  //    var metaFileName = './spec/fixtures/panophoto/sample.json';
-
-  //    var srcImage = fs.readFileSync(srcFileName);
-  //    var metaObj = JSON.parse(fs.readFileSync(metaFileName));
-  //    var srcSize = sizeOf(srcFileName);
-  //    var params = {
-  //      type: metaObj.type, 
-  //      mediaId: metaObj._id,
-  //      image: {  
-  //                width: srcSize.width,
-  //                height: srcSize.height,
-  //                buffer: (new Buffer(srcImage)).toString('base64'),
-  //                hasZipped: false
-  //             },
-  //      thumbnail: { buffer: (new Buffer(fs.readFileSync(thumbFileName))).toString('base64') },
-  //      shardingKey : metaObj.content.shardingKey 
-  //    };
-  //    
-  //    // start testing
-  //    panophoto.processPanoPhoto(params)
-  //    .then(function(result){
-  //      // check the generated metadata is same with sample.json
-  //      assert.deepEqual(result[1], metaObj.content.quality, 'generated metadata is not same with sample.json');
-
-  //      // check the generated imgs are same with groundtruth
-  //      return imageUtil.diff.getFullResultPromised({
-  //           actualImage: tmpFileName,
-  //          expectedImage: './spec/fixtures/panophoto/share.jpg'
-  //     
-  //      });
-  //      console.log(params.shardingKey);
-  //      done(); 
-  //    });
+  //    assert.equal(0, 1,'hahaha');
+  //    done();
   //  });
+
   //});
-
- // describe('Test deleteMediaImages() for panophoto', function() {
- //   it('should store resized & tiled panophoto path specified by config', function (done) {
-
- //   });
-
- // });
 
   describe('Unit test createShareImg():', function() {
     it('should return a img smaller than(4000X2000) with -ProjectionType="equirectangular" EXIF Tag', function (done) {
