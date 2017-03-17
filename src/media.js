@@ -243,7 +243,6 @@ var processPanoPhoto = function(params) {
     var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
                            'thumb.jpg' ];
 
-
     return store.createPromised(thumbImgKeyArr, thumbImgBuf)
     .then(function() {
       if (params.image.hasZipped) {
@@ -623,8 +622,8 @@ module.exports = {
 
 if (process.env.NODE_ENV === 'test') {
   module.exports = {
-    mediaProcessingPanoPhoto: mediaProcessingPanoPhoto,
-    mediaProcessingLivePhoto: mediaProcessingLivePhoto,
+    processPanoPhoto: processPanoPhoto,
+    processLivePhoto: mediaProcessingLivePhoto,
     deleteMediaImages: deleteMediaImages,
     convertImgsToVideo: convertImgsToVideo,
     createShareImg: createShareImg,
