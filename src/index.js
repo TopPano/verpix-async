@@ -13,7 +13,5 @@ worker.jobServers.forEach(function(server) {
 
 var mediaFunc = require('./media');
 var userFunc = require('./user');
-var shareFunc = require('./share');
 mediaFunc.addTo(worker);
 userFunc.addTo(worker);
-shareFunc.addTo(worker);

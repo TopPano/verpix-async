@@ -4,14 +4,48 @@ var fs = require('fs');
 var sizeOf = require('image-size');
 var imageDiff = require('image-diff');
 
-var panophoto = require('../src/media.js');
+var config = require('../config');
 
+var panophoto = require('../src/media.js');
 const exec = require('child_process').exec;
 
 describe('Panophoto:', function() {
   describe('Test mediaProcessingPanoPhoto()', function() {
+    it('should store resized & tiled panophoto path specified by config', function (done) {
+      var job = {};
+      var srcFileName = './spec/fixtures/panophoto/src.jpg';
+      var thumbFileName = './spec/fixtures/panophoto/thumb.jpg';
+      var metaFileName = './spec/fixtures/panophoto/sample.json';
 
+      var srcImage = fs.readFileSync(srcFileName);
 
+      var metaObj = JSON.parse(fs.readFileSync(metaFileName));
+
+      var srcSize = sizeOf(srcFileName);
+
+      job.payload = {
+        type: metaObj.type, 
+        mediaId: metaObj._id,
+        image: {  
+                  width: srcSize.width,
+                  height: srcSize.height,
+                  buffer: (new Buffer(srcImage)).toString('base64'),
+                  hasZipped: false
+               },
+        thumbnail: { buffer: (new Buffer(fs.readFileSync(thumbFileName))).toString('base64') }
+      };
+      
+      var res = panophoto.mediaProcessingPanoPhoto(job);
+      console.log(res);
+
+      done(); 
+    });
+  });
+
+  describe('Test deleteMediaImages() for panophoto', function() {
+    it('should store resized & tiled panophoto path specified by config', function (done) {
+
+    });
 
   });
 
@@ -47,7 +81,6 @@ describe('Panophoto:', function() {
           });
         });
     });
-
   });
   
   describe('Unit test addExifTag():', function() {
@@ -69,16 +102,6 @@ describe('Panophoto:', function() {
         });
     });
 
-
   });
-
-  describe('Test deleteMediaImages() for panophoto', function() {
-
-
-
-  });
-
-
-
 });
 

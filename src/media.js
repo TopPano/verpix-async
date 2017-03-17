@@ -10,7 +10,14 @@ var config = require('../config');
 var randomstring = require('randomstring');
 const spawn = require('child_process').spawn;
 var ObjectStore = require('../object-store');
+var assert = require('assert');
 var store;
+
+// force the NODE_ENV should be in ['production', 'development', 'test']
+var nodeEnvList = ['production', 'development', 'test'];
+assert(nodeEnvList.indexOf(process.env.NODE_ENV)>-1, 
+  'Please set NODE_ENV in ['+nodeEnvList.toString()+']');
+
 if (config.store.bucket === 'MOCKUP') {
   store = P.promisifyAll(new ObjectStore({
     bucket: config.store.bucket,
@@ -18,7 +25,6 @@ if (config.store.bucket === 'MOCKUP') {
     mockupServerPort: config.store.mockupServerPort
   }), { suffix: 'Promised' });
 }
-
 else {
   store = P.promisifyAll(new ObjectStore({ bucket: config.store.bucket }), { suffix: 'Promised' });
 }
@@ -78,7 +84,7 @@ var processImageAsync = P.promisify(function(params, callback) {
       return 0;
     });
     callback(null, results);
-  }
+  };
 
   /** 
    * Determine which tilize and resize options in RESPONSIVE_PANO_DIMENSIONS should be chosen.
@@ -95,7 +101,7 @@ var processImageAsync = P.promisify(function(params, callback) {
     task.shardingKey = params.shardingKey;
     if (params.width < defaultDim.width){
       // if the photo is smaller than 2048
-      if (index == (array.length-1)) {
+      if (index === (array.length-1)) {
         task.width = params.width;
         task.height = params.height;
         task.cmd = 'tilize';
@@ -106,7 +112,7 @@ var processImageAsync = P.promisify(function(params, callback) {
       // TODO: maybe have to check the img is 2:1? if not, resize.
       // and think about when the img is too small, how should be tilized?
     }
-    else if(params.width == defaultDim.width && params.height == defaultDim.height) {
+    else if(params.width === defaultDim.width && params.height === defaultDim.height) {
       // do tilize directliy
       task.cmd = 'tilize';
       processQ.push(task, function(err) {
@@ -131,7 +137,7 @@ var processImageAsync = P.promisify(function(params, callback) {
       .toFormat('jpeg')
       .toBuffer( function(err, buffer) {
         if (err) { return callback(err); }
-        var filename = tile.idx + '.jpg'
+        var filename = tile.idx + '.jpg';
         var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
         store.create(keyArr, buffer, function(err, result) {
           if (err) { return callback(err); }
@@ -146,7 +152,7 @@ var processImageAsync = P.promisify(function(params, callback) {
     function calTileGeometries(imgWidth, imgHeight, tiles) {
       imgWidth = Number(imgWidth);
       imgHeight = Number(imgHeight);
-      if (tiles == 8) {
+      if (tiles === 8) {
         var tileWidth = imgWidth / 4;
         var tileHeight = imgHeight / 2;
         var tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
@@ -165,7 +171,7 @@ var processImageAsync = P.promisify(function(params, callback) {
         });
         return tileGeometries;
       }
-      else if (tiles == 2) {
+      else if (tiles === 2) {
         var tileWidth = imgWidth / 2;
         var tileHeight = imgHeight;
         var tileGeometries = [0, 1].map(function(i) {
@@ -230,18 +236,15 @@ var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
    });
 });
 
-var mediaProcessingPanoPhoto = function(job) {
-  try {
-    var params = JSON.parse(job.payload);
+var processPanoPhoto = function(params) {
     var srcImgBuf = new Buffer(params.image.buffer, 'base64');
     var thumbImgBuf = new Buffer(params.thumbnail.buffer, 'base64');
-    var response = {
-      type: params.type,
-      mediaId: params.mediaId
-    };
+
     var thumbImgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano',
                            'thumb.jpg' ];
-    store.createPromised(thumbImgKeyArr, thumbImgBuf)
+
+
+    return store.createPromised(thumbImgKeyArr, thumbImgBuf)
     .then(function() {
       if (params.image.hasZipped) {
         return inflate(srcImgBuf);
@@ -267,17 +270,23 @@ var mediaProcessingPanoPhoto = function(job) {
         }),
         createShareImg(imgBuf, params.image.width, params.image.height)
           .then((shareBuf) => {
-            store.createPromised(
-              shareKeyArr, 
-              shareBuf, 
-              {contentType: 'image/jpeg'})
+            return store.createPromised(shareKeyArr, shareBuf, {contentType: 'image/jpeg'});
         })
       ]);
-    })
+    });
+};
+
+
+var mediaProcessingPanoPhoto = function(job) {
+  try {
+    var params = JSON.parse(job.payload);
+    processPanoPhoto(params)
     .then(function(result) {
-      response = merge({}, response, {
+      var response = {
+        type: params.type,
+        mediaId: params.mediaId,
         quality: result[1]
-      });
+      };
       job.workComplete(JSON.stringify(response));
     })
     .catch(function(err) {
@@ -314,27 +323,27 @@ function processLivePhotoSrc(params, callback) {
       list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
     else if((imgWidth <= 600) && (imgWidth > 480)) {
-      list.push({width: imgWidth, height: imgHeight, quality: 75})
+      list.push({width: imgWidth, height: imgHeight, quality: 75});
       list.push({width: 480, height: Math.round((imgHeight * 480) / imgWidth), quality: 75});
       list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
       list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
     else if((imgWidth <= 480) && (imgWidth > 360)) {
-      list.push({width: imgWidth, height: imgHeight, quality: 75})
+      list.push({width: imgWidth, height: imgHeight, quality: 75});
       list.push({width: 360, height: Math.round((imgHeight * 360) / imgWidth), quality: 80});
       list.push({width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
     else if((imgWidth <= 360) && (imgWidth > 240)) {
-      list.push({ width: imgWidth, height: imgHeight, quality: 80 })
+      list.push({ width: imgWidth, height: imgHeight, quality: 80 });
       list.push({ width: 240, height: Math.round((imgHeight * 240) / imgWidth), quality: 90});
     }
     else {  
-      list.push({ width: imgWidth, height: imgHeight, quality: 90 })
+      list.push({ width: imgWidth, height: imgHeight, quality: 90 });
     }
 
     // make all height is even, for limits of converting livephotos to video
     for (var i = 0; i < list.length; i++){
-      if (list[i].height%2 == 1){
+      if (list[i].height%2 === 1){
         list[i].height += 1;
       }
     }
@@ -538,7 +547,7 @@ var convertImgsToVideo = function(job) {
       .on('end', function(){
         callback(null, params);
       })
-      .mergeToFile(params.outFilename, './')
+      .mergeToFile(params.outFilename, './');
     };
  
     var uploadS3 = function(params, callback) {
@@ -620,7 +629,6 @@ if (process.env.NODE_ENV === 'test') {
     convertImgsToVideo: convertImgsToVideo,
     createShareImg: createShareImg,
     addExifTag: addExifTag,
-    deleteMediaImages: deleteMediaImages
   };
  
 }

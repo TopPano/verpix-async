@@ -1,8 +1,14 @@
 'use strict';
 
+
+
 module.exports = {
-  facebook: {
-    appId: '630397387117048'
+  store: {
+    bucket: 'MOCKUP',
+    mockupBucketPath: '/tmp',
+    mockupServerPort: 6559
   },
-  shareLinkBase: 'http://dev.verpix.net:8000/viewer/@'
+  servers: JSON.stringify([ { host: 'localhost', port: 4730 } ]),
+  defaultTimeout: 30
+
 };

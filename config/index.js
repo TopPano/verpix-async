@@ -1,20 +1,28 @@
 'use strict';
-
+var assert = require('assert');
 var merge = require('lodash/merge');
 
-var base = require('./base');
-var config = (process.env.NODE_ENV === 'production') ?
-              require('./production.js') :
-              require('./development.js');
+// force the NODE_ENV should be in ['production', 'development', 'test']
+var nodeEnvList = ['production', 'development', 'test'];
+assert(nodeEnvList.indexOf(process.env.NODE_ENV)>-1,
+  'Please set NODE_ENV in ['+nodeEnvList.toString()+']');
 
-module.exports = merge({}, base, config, {
-  facebook: {
-    appId: process.env.FB_APP_ID
-  },
-  twitter: {
-    consumerKey: process.env.TWITTER_CONSUMER_KEY,
-    consumerSecret: process.env.TWITTER_CONSUMER_SECRET
-  },
+var config;
+switch (process.env.NODE_ENV) {
+  case 'production':
+    config = require('./production.js');
+    break;
+  case 'development':
+    config = require('./development.js');
+    break;
+  case 'test':
+    config = require('./test.js');
+    break;
+  default:
+    assert(false, 'Something wrong in config');
+}
+
+module.exports = merge({}, config, {
   store: {
     bucket: process.env.STORE_BKT,
     mockupBucketPath: process.env.STORE_MOCKUP_BKTPATH,

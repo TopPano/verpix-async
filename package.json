@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "cd object-store; npm install",
     "test": "NODE_ENV='test' mocha -R spec spec/ --recursive --timeout 30000",
-    "dev": "NODE_ENV='developement' node src/index.js",
+    "dev": "NODE_ENV='development' node src/index.js",
     "start": "NODE_ENV='production' pm2 start src/index.js --name verpix-async",
     "stop": "NODE_ENV='production' pm2 delete verpix-async -s &> /dev/null",
     "docker-start": "NODE_ENV='production' pm2-docker start src/index.js"
