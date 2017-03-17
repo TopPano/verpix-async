@@ -40,7 +40,11 @@ describe('Panophoto:', function() {
   //      assert.deepEqual(result[1], metaObj.content.quality, 'generated metadata is not same with sample.json');
 
   //      // check the generated imgs are same with groundtruth
-  //      
+  //      return imageUtil.diff.getFullResultPromised({
+  //           actualImage: tmpFileName,
+  //          expectedImage: './spec/fixtures/panophoto/share.jpg'
+  //     
+  //      });
   //      console.log(params.shardingKey);
   //      done(); 
   //    });
@@ -68,12 +72,10 @@ describe('Panophoto:', function() {
           // save the precessed buffer to a tmp file
           fs.writeFileSync(tmpFileName, dstImgBuf);
           // check the similarity of dstImage and shared.jpg generated before
-          imageUtil.diff.getFullResultPromised({
-            actualImage: tmpFileName,
-            expectedImage: './spec/fixtures/panophoto/share.jpg'
-          })
-          .then((res) => {
-            assert.equal(res.percentage, 0, 'not same with share.jpg');
+          var imagePairList = [[tmpFileName, './spec/fixtures/panophoto/share.jpg']];
+          imageUtil.diff.areSamePromised(imagePairList)
+          .then((areSame) => {
+            assert.equal(areSame, true, 'not same with share.jpg');
             // check the exif tag is existed
             var hasExifTag = imageUtil.exif.hasExifTagSync(tmpFileName, 'ProjectionType', 'equirectangular');
             assert(hasExifTag, 'the exif tag not exist');
