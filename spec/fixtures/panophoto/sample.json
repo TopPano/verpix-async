@@ -1,31 +1,27 @@
 {
-  "_id": "ad5620cecba5e800",
+  "_id": "ad74e9d21125e800",
   "status": "completed",
   "dimension": {
-    "width": 5376,
-    "height": 2688,
-    "lat": -11.4744075047473,
-    "lng": 13.907620526910932
+    "width": 1200,
+    "height": 600,
+    "lat": 12.656094922140891,
+    "lng": 43.85534834866485
   },
   "type": "panoPhoto",
-  "caption": "",
-  "created": "2017-03-08T04:51:05.751Z",
-  "modified": "2017-03-08T04:51:08.599Z",
+  "caption": "unit test",
+  "created": "2017-03-20T03:47:25.858Z",
+  "modified": "2017-03-20T03:47:26.307Z",
   "ownerId": "59d7c560-a282-11e6-b815-332ab553a7e4",
   "locationId": null,
-  "title": "大美莊園-1",
+  "title": "test",
   "tags": [],
   "content": {
-    "shardingKey": "803b",
+    "shardingKey": "7066",
     "storeUrl": "https://verpixplus-img-production.s3.amazonaws.com/",
     "cdnUrl": "https://dykzcuzsao2p1.cloudfront.net/",
     "quality": [
       {
-        "size": "4000X2000",
-        "tiles": 8
-      },
-      {
-        "size": "2000X1000",
+        "size": "1200X600",
         "tiles": 2
       }
     ],

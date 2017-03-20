@@ -609,18 +609,9 @@ var convertImgsToVideo = function(job) {
 
 
 
-function addTo(worker) {
-  worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
-  worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
-  worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
-  worker.addFunction('convertImgsToVideo', convertImgsToVideo, { timeout: config.defaultTimeout });
-}
 
-module.exports = {
-  addTo: addTo
-};
 
-if (process.env.NODE_ENV === 'test') {
+if (process.env.NODE_ENV === 'test'){
   module.exports = {
     processPanoPhoto: processPanoPhoto,
     processLivePhoto: mediaProcessingLivePhoto,
@@ -629,6 +620,18 @@ if (process.env.NODE_ENV === 'test') {
     createShareImg: createShareImg,
     addExifTag: addExifTag,
   };
- 
 }
-
+else if (process.env.NODE_ENV === 'productions'){
+  var addTo = function (worker) {
+    worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
+    worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
+    worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
+    worker.addFunction('convertImgsToVideo', convertImgsToVideo, { timeout: config.defaultTimeout });
+  }
+  module.exports = {
+    addTo: addTo
+  };
+}
+else {
+// TODO: what if NODE_ENV!=test and !=production
+}
