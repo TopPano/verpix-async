@@ -458,6 +458,39 @@ var mediaProcessingLivePhoto = function(job) {
   }
 };
 
+var deleteImages = function(params){
+  var type;  
+  if (params.media.type === 'panoPhoto') {
+    type = 'pano';
+  }  
+  else if (params.media.type === 'livePhoto') {
+    type = 'live';
+  }
+  var deleteList = []; 
+  var keyPrefix = params.media.content.shardingKey+'/media/'+params.media.sid+'/'+type+'/';
+
+  deleteList.push(keyPrefix+'thumb.jpg');
+  deleteList.push(keyPrefix+'src.jpg');
+  
+  if (type === 'pano'){
+    deleteList.push(keyPrefix+'share.jpg');
+  }
+  else if(type === 'live'){
+    deleteList.push(keyPrefix+'src.jpg.zip');
+  }
+  params.media.content.quality.map(function(quality) {
+    for(var i=0; i<quality.tiles; i++) {
+      deleteList.push(keyPrefix+quality.size+'/'+i+'.jpg');
+    }
+  });
+  return new Promise((resolve, reject) => {
+    store.delete(deleteList, function(err) {
+      if (err) { reject(err); }
+      else{resolve();}
+    });
+  });
+};
+
 var deleteMediaImages = function(job) {
   try {
     var params = JSON.parse(job.payload);
@@ -466,31 +499,14 @@ var deleteMediaImages = function(job) {
         status: 'success'
       }));
     }
-    
-    var type;  
-    if (params.media.type === 'panoPhoto') {
-      type = 'pano';
-    }  
-    else if (params.media.type === 'livePhoto') {
-      type = 'live';
-    }
-    var deleteList = []; 
-    var keyPrefix = params.media.content.shardingKey+'/media/'+params.media.sid+'/'+type+'/';
-
-    deleteList.push(keyPrefix+'thumb.jpg');
-    deleteList.push(keyPrefix+'src.jpg');
-    deleteList.push(keyPrefix+'src.jpg.zip');
-    
-    params.media.content.quality.map(function(quality) {
-      for(var i=0; i<params.media.content.count; i++) {
-        deleteList.push(keyPrefix+quality+'/'+i+'.jpg');
-      }
-    });
-    store.delete(deleteList, function(err) {
-      if (err) { return job.reportException(err); }
+    deleteImages(params)
+    .then(() => { 
       job.workComplete(JSON.stringify({
         status: 'success'
       }));
+    },
+    (err) => {
+      if (err) { return job.reportException(err); }
     });
   } catch (err) {
     job.reportException(err);
@@ -608,26 +624,23 @@ var convertImgsToVideo = function(job) {
 };
 
 
-
-
-
 if (process.env.NODE_ENV === 'test'){
   module.exports = {
     processPanoPhoto: processPanoPhoto,
     processLivePhoto: mediaProcessingLivePhoto,
-    deleteMediaImages: deleteMediaImages,
+    deleteImages: deleteImages,
     convertImgsToVideo: convertImgsToVideo,
     createShareImg: createShareImg,
     addExifTag: addExifTag,
   };
 }
-else if (process.env.NODE_ENV === 'productions'){
+else if (process.env.NODE_ENV === 'productions' || process.env.NODE_ENV === 'development'){
   var addTo = function (worker) {
     worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
     worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
     worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
     worker.addFunction('convertImgsToVideo', convertImgsToVideo, { timeout: config.defaultTimeout });
-  }
+  };
   module.exports = {
     addTo: addTo
   };
