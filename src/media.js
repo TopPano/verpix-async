@@ -426,6 +426,32 @@ function processLivePhotoThumb(params, callback) {
   });
 }
 
+var processLivePhoto = function(params){
+  return new P.Promise((resolve, reject) => {
+    async.parallel({
+     src: function(callback) {
+       processLivePhotoSrc({
+         mediaId: params.mediaId,
+         image: params.image,
+         shardingKey: params.shardingKey,
+       }, callback);
+     },
+     thumb: function(callback) {
+       processLivePhotoThumb({
+         mediaId: params.mediaId,
+         image: params.thumbnail,
+         shardingKey: params.shardingKey
+       }, callback);
+     }
+    }, function(err, results) {
+      if (err) {reject(err);}
+      else{
+        resolve(merge({}, results.src, results.thumb));
+      }
+    });
+  });
+};
+
 var mediaProcessingLivePhoto = function(job) {
   try {
     var params = JSON.parse(job.payload);
@@ -433,25 +459,13 @@ var mediaProcessingLivePhoto = function(job) {
       type: params.type,
       mediaId: params.mediaId
     };
-    async.parallel({
-      src: function(callback) {
-        processLivePhotoSrc({
-          mediaId: params.mediaId,
-          image: params.image,
-          shardingKey: params.shardingKey,
-        }, callback);
-      },
-      thumb: function(callback) {
-        processLivePhotoThumb({
-          mediaId: params.mediaId,
-          image: params.thumbnail,
-          shardingKey: params.shardingKey
-        }, callback);
-      }
-    }, function(err, results) {
-      if (err) { return job.reportException(err); }
-      response = merge({}, response, results.src, results.thumb);
+    processLivePhoto(params)
+    .then((result) => {
+      response = merge({}, response, result.src, result.thumb);
       job.workComplete(JSON.stringify(response));
+    })
+    .catch((err) => {
+      job.reportException(err); 
     });
   } catch (err) {
     job.reportException(err);
@@ -623,11 +637,10 @@ var convertImgsToVideo = function(job) {
   }
 };
 
-
 if (process.env.NODE_ENV === 'test'){
   module.exports = {
     processPanoPhoto: processPanoPhoto,
-    processLivePhoto: mediaProcessingLivePhoto,
+    processLivePhoto: processLivePhoto,
     deleteImages: deleteImages,
     convertImgsToVideo: convertImgsToVideo,
     createShareImg: createShareImg,
