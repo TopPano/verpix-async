@@ -484,7 +484,7 @@ var deleteImages = function(params){
     }
   });
   return new Promise((resolve, reject) => {
-    store.delete(deleteList, function(err) {
+    store.delete(deleteList, function(err) { 
       if (err) { reject(err); }
       else{resolve();}
     });
