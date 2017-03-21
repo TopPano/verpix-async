@@ -50,7 +50,8 @@ var areSamePromised = function(imagePairList){
       if(typeof(resList[i].percentage) !== 'number'){
         return P.reject('something wrong in areSamePromised() in imgUtil.js');
       }
-      if((resList[i].percentage) > 0){
+      console.log(resList[i].percentage);
+      if((resList[i].percentage) > 0.001){
         return P.resolve(false);
       }
     }
