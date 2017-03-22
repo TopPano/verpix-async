@@ -425,7 +425,6 @@ function processLivePhotoThumb(params, callback) {
     });
   });
 }
-
 var processLivePhoto = function(params){
   return new P.Promise((resolve, reject) => {
     async.parallel({
@@ -459,9 +458,10 @@ var mediaProcessingLivePhoto = function(job) {
       type: params.type,
       mediaId: params.mediaId
     };
+    
     processLivePhoto(params)
     .then((result) => {
-      response = merge({}, response, result.src, result.thumb);
+      response = merge({}, response, result);
       job.workComplete(JSON.stringify(response));
     })
     .catch((err) => {
@@ -527,115 +527,141 @@ var deleteMediaImages = function(job) {
   }
 };
 
-var convertImgsToVideo = function(job) {
-  try {
-    var mediaObj = JSON.parse(job.payload);
-    var keyPrefix = mediaObj.content.shardingKey+'/media/'+mediaObj.sid+'/';
-    if (mediaObj.type === 'livePhoto'){
-      keyPrefix += 'live/';
-    }
-    keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';  
-    var cdnUrl = mediaObj.content.cdnUrl;  
-    var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid;
 
-    
-    var convertJpgToVideo = function(params, callback) {
-      var originalStream = fs.createWriteStream(params.oriFilename);
-      ffmpeg()
-      .input(params.input)
-      .inputFPS(25)
-      .fps(25)
-      .videoCodec('libx264')
-      .format('avi')
-      .on('end', function() {
+var convertImgsToVideo = function(mediaObj){
+  var keyPrefix = mediaObj.content.shardingKey+'/media/'+mediaObj.sid+'/';
+  if (mediaObj.type === 'livePhoto'){
+    keyPrefix += 'live/';
+  }
+  keyPrefix = keyPrefix + mediaObj.content.quality[0] + '/';
+  
+  var srcUrl;
+  if(process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development')
+  {
+    srcUrl = config.store.mockupBucketPath+'/';  
+  }
+  else if(process.env.NODE_ENV === 'production'){
+    //TODO: whatif mediaObj.content.cdnUrl undefined?
+    srcUrl = mediaObj.content.cdnUrl;
+  }
+  
+  var tmpFilename = randomstring.generate(4) + '_' + mediaObj.sid;
+
+  var convertJpgToVideo = function(params, callback) {
+    var originalStream = fs.createWriteStream(params.oriFilename);
+    ffmpeg()
+    .input(params.input)
+    .inputFPS(25)
+    .fps(25)
+    .videoCodec('libx264')
+    .format('avi')
+    .on('end', function() {
+      callback(null, params);
+    })
+    .pipe(originalStream);
+  };
+  
+  var createReverseVideo = function(params, callback) {
+    var reversedStream = fs.createWriteStream(params.revFilename);
+    ffmpeg()
+    .input(params.oriFilename)
+    .inputFPS(25)
+    .videoCodec('libx264')
+    .videoFilters('reverse')
+    .fps(25)
+    .format('avi')
+    .on('end', function() {
+      callback(null, params);
+    })
+    .pipe(reversedStream);
+  };
+  
+  var concatVideo = function(params, callback) {
+    ffmpeg()
+    .input(params.oriFilename)
+    .input(params.revFilename)
+    .format('mp4')
+    .on('end', function(){
+      callback(null, params);
+    })
+    .mergeToFile(params.outFilename, './');
+  };
+
+  var uploadS3 = function(params, callback) {
+    fs.readFile(params.outFilename, function(err, data){
+      if(err){ return callback(err); }  
+      var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
+      store.create(keyArr, data, {contentType: 'video/mp4'}, function(err, result) {
+        if (err) {return callback(err);}
         callback(null, params);
-      })
-      .pipe(originalStream);
-    };
-    
-    var createReverseVideo = function(params, callback) {
-      var reversedStream = fs.createWriteStream(params.revFilename);
-      ffmpeg()
-      .input(params.oriFilename)
-      .inputFPS(25)
-      .videoCodec('libx264')
-      .videoFilters('reverse')
-      .fps(25)
-      .format('avi')
-      .on('end', function() {
-        callback(null, params);
-      })
-      .pipe(reversedStream);
-    };
-    
-    var concatVideo = function(params, callback) {
-      ffmpeg()
-      .input(params.oriFilename)
-      .input(params.revFilename)
-      .format('mp4')
-      .on('end', function(){
-        callback(null, params);
-      })
-      .mergeToFile(params.outFilename, './');
-    };
- 
-    var uploadS3 = function(params, callback) {
-      fs.readFile(params.outFilename, function(err, data){
-        if(err){ return job.reportException(err); }  
-        var keyArr = [ mediaObj.content.shardingKey, 'media', mediaObj.sid, 'live', 'video.mp4' ];
-        store.create(keyArr, data, {contentType: 'video/mp4'}, function(err, result) {
-          if (err) {return callback(err);}
-          callback(null, params);
-        });
       });
-    };
- 
-    var deleteTmps = function(params, callback) {
-      async.parallel([
-        (cb) => { 
-          fs.unlink(params.oriFilename, function(err, data){
-            if (err) { return cb(err);}
-            cb(null);
-          });  
-        },
-        (cb) => { 
-          fs.unlink(params.revFilename, function(err, data){
-            if (err) { return cb(err);}
-            cb(null);
-          });  
-        },
-        (cb) => { 
-          fs.unlink(params.outFilename, function(err, data){
-            if (err) { return cb(err);}
-            cb(null);
-          });  
-        }],
+    });
+  };
 
-        (err, res) =>{
-          if(err) {return callback(err);}
-          callback(null);
-        });
-    };
-   
+  var deleteTmps = function(params, callback) {
+    async.parallel([
+      (cb) => { 
+        fs.unlink(params.oriFilename, function(err, data){
+          if (err) { return cb(err);}
+          cb(null);
+        });  
+      },
+      (cb) => { 
+        fs.unlink(params.revFilename, function(err, data){
+          if (err) { return cb(err);}
+          cb(null);
+        });  
+      },
+      (cb) => { 
+        fs.unlink(params.outFilename, function(err, data){
+          if (err) { return cb(err);}
+          cb(null);
+        });  
+      }],
+
+      (err, res) =>{
+        if(err) {return callback(err);}
+        callback(null);
+      });
+  };
+
+  // TODO: need try-catch for avoiding flow() crashed
+  return new P.Promise((resolve, reject) => {
     var flow = async.seq(convertJpgToVideo, createReverseVideo, concatVideo, uploadS3, deleteTmps); 
     flow({
-          outFilename: tmpFilename+'.mp4',
-          oriFilename: tmpFilename+'Ori',
-          revFilename: tmpFilename+'Rev',
-          input: cdnUrl+keyPrefix+'%d.jpg'
-        }, 
-        function(err, res){
-          if(err){return job.reportException(err);}
-          job.workComplete(JSON.stringify({
-            status: 'success',
-            videoType: 'mp4'  
-          }));
+      outFilename: tmpFilename+'.mp4',
+      oriFilename: tmpFilename+'Ori',
+      revFilename: tmpFilename+'Rev',
+      input: srcUrl+keyPrefix+'%d.jpg'
+    }, 
+    function(err, res){
+      if(err){reject(err);}
+      else {
+        resolve({
+          status: 'success',
+          videoType: 'mp4'  
+        });
+      }
     });
+  });
+};
 
-  } catch (err) {
+
+var exposedConvertImgsToVideo = function(job) {
+  try {
+    var params = JSON.parse(job.payload);
+    convertImgsToVideo(params)
+    .then((res) => {
+       job.workComplete(JSON.stringify(res));
+    })
+    .catch((err) => {
+      job.reportException(err);
+    });
+   } catch (err) {
     job.reportException(err);
   }
 };
+
 
 if (process.env.NODE_ENV === 'test'){
   module.exports = {
@@ -652,7 +678,9 @@ else if (process.env.NODE_ENV === 'productions' || process.env.NODE_ENV === 'dev
     worker.addFunction('mediaProcessingPanoPhoto', mediaProcessingPanoPhoto, { timeout: config.defaultTimeout });
     worker.addFunction('mediaProcessingLivePhoto', mediaProcessingLivePhoto, { timeout: config.defaultTimeout });
     worker.addFunction('deleteMediaImages', deleteMediaImages, { timeout: config.defaultTimeout });
-    worker.addFunction('convertImgsToVideo', convertImgsToVideo, { timeout: config.defaultTimeout });
+    worker.addFunction('convertImgsToVideo', exposedConvertImgsToVideo, { timeout: config.defaultTimeout });
+    // TODO: I(@uniray7) plan a naming convention that all exposed function will have prefix "exposed"
+    worker.addFunction('exposedConvertImgsToVideo', exposedConvertImgsToVideo, { timeout: config.defaultTimeout });
   };
   module.exports = {
     addTo: addTo

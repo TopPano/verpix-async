@@ -60,8 +60,22 @@ var areSamePromised = function(imagePairList){
   .error(function(e){return P.reject(e);});
 };
 
+var areBufEqual = function(bufA, bufB) {
+  var len = bufA.length;
+  if (len !== bufB.length) {
+    return false;
+  }
+  for (var i = 0; i < len; i++) {
+    if (bufA.readUInt8(i) !== bufB.readUInt8(i)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 
 imageDiff.areSamePromised = areSamePromised; 
+imageDiff.areBufEqual = areBufEqual;
 
 var imageUtil = {
   diff: imageDiff,
