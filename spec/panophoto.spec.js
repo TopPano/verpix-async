@@ -8,8 +8,8 @@ var config = require('../config');
 
 var panophoto = require('../src/media.js');
 
-describe('Panophoto:', function() {
-  describe('Test processPanoPhoto()', function() {
+describe('Panophoto: ', function() {
+  describe('Test processPanoPhoto(): ', function() {
 
     it('should store resized & tiled panophoto path specified by config', function () {
       // prepare for input test data
@@ -82,7 +82,7 @@ describe('Panophoto:', function() {
 
 
 
-  describe('Test deleteImages() for panophoto', function() {
+  describe('Test deleteImages() for panophoto: ', function() {
     it('should delete a panophoto after it was created', function () {
       // create a panohoto first
       var srcFileName = './spec/fixtures/panophoto/src.jpg';
@@ -154,7 +154,7 @@ describe('Panophoto:', function() {
     });
   });
 
-  describe('Unit test createShareImg():', function() {
+  describe('Unit test createShareImg(): ', function() {
     it('should return a img smaller than(4000X2000) with -ProjectionType="equirectangular" EXIF Tag', function () {
       // read source image and get the size
       var srcFileName = './spec/fixtures/panophoto/src.jpg';

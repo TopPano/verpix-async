@@ -8,7 +8,7 @@ var config = require('../config');
 
 var livephoto = require('../src/media.js');
 
-describe('Livephoto manipulating: ', function() {
+describe('Livephoto: ', function() {
   describe('Test processLivePhoto(): ', function() {
     it('should store resized & deframed images which path are specified by config', function () {
       // TODO: delete store data created by previous test
@@ -73,7 +73,7 @@ describe('Livephoto manipulating: ', function() {
 
 
   describe('Test convertImgsToVideo(): ', function() {
-    it.only('processLivePhoto() then convertImgsToVideo(), should create a video with a specified path', function () {
+    it('processLivePhoto()->convertImgsToVideo(), should create a video with a specified path', function () {
       // TODO: delete store data created by previous test
       // prepare for input test data
       var srcFileName = './spec/fixtures/livephoto/src.jpg';
@@ -136,11 +136,91 @@ describe('Livephoto manipulating: ', function() {
   });
 
   describe('Test deleteMediaImages() for livephoto', function() {
+    it('processLivePhoto()->convertImgsToVideo()->deleteMediaImages(), should delete a livephoto after it was created: ', function () {
+      // TODO: delete store data created by previous test
+      //create a livehoto first
+      // prepare for input test data
+      var srcFileName = './spec/fixtures/livephoto/src.jpg';
+      var thumbFileName = './spec/fixtures/livephoto/thumb.jpg';
+      var metaFileName = './spec/fixtures/livephoto/sample.json';
 
+      var srcImage = fs.readFileSync(srcFileName);
+      var metaObj = JSON.parse(fs.readFileSync(metaFileName));
+      var srcSize = sizeOf(srcFileName);
+      var createParams = {
+        type: metaObj.type, 
+        mediaId: metaObj._id,
+        image: {  
+          width: srcSize.width,
+          height: srcSize.height,
+          buffer: (new Buffer(srcImage)).toString('base64'),
+          hasZipped: false,
+          imgArrBoundary: metaObj.content.imgArrBoundary
+        },
+        thumbnail: { buffer: (new Buffer(fs.readFileSync(thumbFileName))).toString('base64') },
+        shardingKey : metaObj.content.shardingKey 
+      };
+      // start processLivePhoto()
+      return livephoto.processLivePhoto(createParams)
+      .then((result) => {
+        var convertParams = {
+          sid: metaObj._id,
+          type: metaObj.type,
+          content: {
+            shardingKey: metaObj.content.shardingKey,
+            cdnUrl: config.store.mockupBucketPath+'/',
+            quality: result.quality
+          }
+        };
 
+        // start convertImgsToVideo()
+        return livephoto.convertImgsToVideo(convertParams).then(()=>{return P.resolve(result);});
+      })
+      .then((result) => {
+        // check images are correctly store in mock-up?
+        // dont need: it was checked by last it()
+        var deleteParams = {
+          media:{
+            sid: metaObj._id,
+            type: metaObj.type,
+            content: {
+              shardingKey: metaObj.content.shardingKey,
+              quality: result.quality,
+              count: result.count
+            }
+          }
+        };
+        // test deleting images
+        return livephoto.deleteImages(deleteParams);
+      })
+      .then(function(){
+        // check image are correctly deleted
+        var imgCheckList = [];
+        imgCheckList.push();
+        var qualities = metaObj.content.quality;
+        for(var i in qualities){
+          for (var j=0; j<metaObj.content.count; j++){
+            imgCheckList.push(config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/live/'+qualities[i]+'/'+j.toString()+'.jpg');
+          }
+        }
 
-  });
+        imgCheckList.push(config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/live/video.jpg');
+        imgCheckList.push(config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/live/src.jpg');
+        imgCheckList.push(config.store.mockupBucketPath+'/'+metaObj.content.shardingKey+'/media/'+metaObj._id+'/live/thumb.jpg');
+        for(var path in imgCheckList){
+          assert(!fs.existsSync(imgCheckList[path]), 'image ' + imgCheckList[path] + ' should not exist after deleting');
+        }
+      })
+      .catch((err)=>{
+        if(err){
+          assert.ok(false, err);
+        }
+        else{
+          assert.ok(false, 'something wrong');
+        }
+      });
 
+    }); // it
 
-});
-
+  }); // describe
+});// describe

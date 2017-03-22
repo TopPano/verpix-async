@@ -473,6 +473,7 @@ var mediaProcessingLivePhoto = function(job) {
 };
 
 var deleteImages = function(params){
+  // TODO: maybe deletImages should be split into pano and live
   var type;  
   if (params.media.type === 'panoPhoto') {
     type = 'pano';
@@ -491,12 +492,22 @@ var deleteImages = function(params){
   }
   else if(type === 'live'){
     deleteList.push(keyPrefix+'src.jpg.zip');
+    deleteList.push(keyPrefix+'video.mp4');
   }
+
   params.media.content.quality.map(function(quality) {
-    for(var i=0; i<quality.tiles; i++) {
-      deleteList.push(keyPrefix+quality.size+'/'+i+'.jpg');
+    if (type === 'pano') { 
+      for(var i=0; i<quality.tiles; i++) {
+        deleteList.push(keyPrefix+quality.size+'/'+i+'.jpg');
+      }
+    }
+    else if(type === 'live') {
+       for(var i=0; i<params.media.content.count; i++) {
+        deleteList.push(keyPrefix+quality+'/'+i+'.jpg');
+      }
     }
   });
+
   return new Promise((resolve, reject) => {
     store.delete(deleteList, function(err) { 
       if (err) { reject(err); }
