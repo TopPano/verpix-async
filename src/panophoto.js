@@ -6,10 +6,9 @@ var sizeOf = require('image-size');
 var fs = require('fs');
 var config = require('../config');
 var randomstring = require('randomstring');
+
 const spawn = require('child_process').spawn;
-//var ObjectStore = require('../object-store');
-var assert = require('assert');
-var store;
+let store = require('./store.js');
 
 const RESPONSIVE_PANO_DIMENSIONS = [
   {width: 8000, height: 4000, tiles: 8},
@@ -87,8 +86,8 @@ function tilizeImageAndCreateObject(imgBuf, params, callback) {
 
 /** 
 * @function procAndStoreImgPromised
-* @params
-* @returns
+* @params {image: Buffer, width: Number, height: Number, mediaId: String, shardingKey: String}
+* @returns {[size:'4000X2000', tiles:8]}
 * @description resize, tilize and store panophoto in Promised way
 */
 var procAndStoreImgPromised = function(params){
@@ -185,11 +184,12 @@ var addExifTag = P.promisify(function(srcImgBuf, tag, callback) {
   });
 });
 
-/*
- * create a resized image (smaller than 4000X2000) 
- * with EXIF Tag "ProjectionType=equirectangular" 
- * for sharing to FB 
- */
+/** 
+* @function createShareImg
+* @params imgBuf, width, height
+* @returns imgBuf with Exif Tag
+* @description create a resized image (smaller than 4000X2000) with EXIF Tag "ProjectionType=equirectangular" for sharing to FB 
+*/
 var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
   var sharpObj;
   if(width > 4000) {
@@ -208,6 +208,14 @@ var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
    });
 });
 
+
+// TODO: the param 'type' should be removed, because it's createPano()!
+/** 
+* @function createPano
+* @params { type: {'pano'}, mediaId: String, image: {width: Number, height: Number, buffer: Buffer, hasZipped: Boolean}, thumbnail: {buffer: Buffer}, shardingKey: String}
+* @returns [{size:String, tiles:Number}]
+* @description create and store a panophoto
+*/
 var createPano = function(params) {
   // 1. check if srcBuf is zipped
   // 2. TODO check the width:height=2:1?
@@ -268,6 +276,12 @@ var createPano = function(params) {
     });
 };
 
+/** 
+* @function jobCreatePano
+* @params job from gearman client
+* @returns nothing
+* @description receive job from gearman, work and response back to gearman
+*/
 var jobCreatePano = function(job) {
   try {
     var params = JSON.parse(job.payload);
@@ -288,8 +302,17 @@ var jobCreatePano = function(job) {
   }
 };
 
-var deleteImages = function(params){
+
+//TODO: the type in params should be removed, because it's deletePano
+/** 
+* @function deletePano
+* @params {media:{sid: String, type: 'pano', content: {shardingKey: String, quality: [{size: String, tiles: Number}]}}}
+* @returns nothing
+* @description receive job from gearman, work and response back to gearman
+*/
+var deletePano = function(params){
   // TODO: maybe deletImages should be split into pano and live
+  // TODO: the livephoto part should be removed
   var type;  
   if (params.media.type === 'panoPhoto') {
     type = 'pano';
@@ -331,15 +354,20 @@ var deleteImages = function(params){
   });
 };
 
+/** 
+* @function jobDeletePano
+* @params job from gearman client
+* @returns nothing
+* @description receive job from gearman, delete and response back to gearman
+*/
 var jobDeletePano = function(job) {
   try {
     var params = JSON.parse(job.payload);
     if (!params.media) {
-      return job.workComplete(JSON.stringify({
-        status: 'success'
-      }));
+      job.reportException(new Error('params without media'));
     }
-    deleteImages(params)
+
+    deletePano(params)
     .then(() => { 
       job.workComplete(JSON.stringify({
         status: 'success'
@@ -354,11 +382,9 @@ var jobDeletePano = function(job) {
 };
 
 
-store = require('./store.js');
 var addTo = function (worker) {
   worker.addFunction('mediaProcessingPanoPhoto', jobCreatePano, { timeout: config.defaultTimeout });
   worker.addFunction('deleteMediaImages', jobDeletePano, { timeout: config.defaultTimeout });
-  // TODO: I(@uniray7) plan a naming convention that all exposed function will have prefix "job"
 };
 module.exports = {
   addTo: addTo
