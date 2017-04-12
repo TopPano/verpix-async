@@ -6,9 +6,9 @@ var imageUtil = require('./imageUtil.js');
 
 var config = require('../config');
 
-var livephoto = require('../src/media.js');
+//var livephoto = require('../src/media.js');
 
-describe('Livephoto: ', function() {
+describe.skip('Livephoto: ', function() {
   describe('Test processLivePhoto(): ', function() {
     it('should store resized & deframed images which path are specified by config', function () {
       // TODO: delete store data created by previous test

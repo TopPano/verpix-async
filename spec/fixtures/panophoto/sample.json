@@ -22,7 +22,7 @@
     "quality": [
       {
         "size": "1200X600",
-        "tiles": 2
+        "tiles": 1
       }
     ],
     "project": "equirectangular"

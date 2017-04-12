@@ -195,7 +195,7 @@
     },
     "debug": {
       "version": "2.2.0",
-      "from": "debug@>=2.2.0 <2.3.0",
+      "from": "debug@2.2.0",
       "resolved": "https://registry.npmjs.org/debug/-/debug-2.2.0.tgz"
     },
     "deep-extend": {
@@ -342,6 +342,11 @@
       "version": "0.4.13",
       "from": "iconv-lite@>=0.4.11 <0.5.0",
       "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.4.13.tgz"
+    },
+    "image-size": {
+      "version": "0.5.1",
+      "from": "image-size@0.5.1",
+      "resolved": "https://registry.npmjs.org/image-size/-/image-size-0.5.1.tgz"
     },
     "inflight": {
       "version": "1.0.5",
@@ -519,6 +524,11 @@
       "version": "2.72.0",
       "from": "request@2.72.0",
       "resolved": "https://registry.npmjs.org/request/-/request-2.72.0.tgz"
+    },
+    "rewire": {
+      "version": "2.5.2",
+      "from": "rewire@latest",
+      "resolved": "https://registry.npmjs.org/rewire/-/rewire-2.5.2.tgz"
     },
     "rimraf": {
       "version": "2.5.4",

@@ -3,20 +3,33 @@ var assert = require('assert');
 var fs = require('fs');
 var sizeOf = require('image-size');
 var imageUtil = require('./imageUtil.js');
+var rewire = require('rewire');
 
 var config = require('../config');
+var ObjectStore = require('../object-store');
 
-var panophoto = require('../src/media.js');
+var panophoto = rewire('../src/panophoto.js');
+
+var store;
 
 describe('Panophoto: ', function() {
-  describe('Test processPanoPhoto(): ', function() {
+  
+  before(function(){
+    store = P.promisifyAll(new ObjectStore({
+      bucket: config.store.bucket,
+      mockupBucketPath: config.store.mockupBucketPath,
+      mockupServerPort: config.store.mockupServerPort
+    }), { suffix: 'Promised'}); 
+  });
 
+  describe('Test processPanoPhoto(): ', function() {
     it('should store resized & tiled panophoto path specified by config', function () {
       // prepare for input test data
+      panophoto.__set__('store', store);
+
       var srcFileName = './spec/fixtures/panophoto/src.jpg';
       var thumbFileName = './spec/fixtures/panophoto/thumb.jpg';
       var metaFileName = './spec/fixtures/panophoto/sample.json';
-
       var srcImage = fs.readFileSync(srcFileName);
       var metaObj = JSON.parse(fs.readFileSync(metaFileName));
       var srcSize = sizeOf(srcFileName);
@@ -34,10 +47,11 @@ describe('Panophoto: ', function() {
       };
 
       // start testing
-      return panophoto.processPanoPhoto(params)
+      var createPanoFunc = panophoto.__get__('createPano');
+      return createPanoFunc(params)
       .then(function(result){
         // check the generated metadata is same with sample.json
-        assert.deepEqual(result[1], metaObj.content.quality, 'generated metadata is not same with sample.json');
+        assert.deepEqual(result, metaObj.content.quality, 'generated metadata is not same with sample.json');
         return P.resolve();
       })
       .then(function(){
@@ -105,7 +119,10 @@ describe('Panophoto: ', function() {
         shardingKey : metaObj.content.shardingKey 
       };
 
-      return panophoto.processPanoPhoto(createParams)
+      var createPanoFunc = panophoto.__get__('createPano');
+      var deleteImagesFunc = panophoto.__get__('deleteImages');
+
+      return createPanoFunc(createParams)
       .then(function(result){
         // check images are correctly store in mock-up?
         // dont need: it was checked by last it()
@@ -115,13 +132,12 @@ describe('Panophoto: ', function() {
             type: metaObj.type,
             content: {
               shardingKey: metaObj.content.shardingKey,
-              quality: result[1]
+              quality: result
             }
           }
         };
-
         // test deleting images
-        return panophoto.deleteImages(deleteParams);
+        return deleteImagesFunc(deleteParams);
       })
       .then(function(){
         // check image are correctly deleted
@@ -162,8 +178,9 @@ describe('Panophoto: ', function() {
       var srcSize = sizeOf(srcFileName);
       var tmpFileName = './spec/fixtures/panophoto/test_for_createShareImg.jpg';
 
+      var createShareImgFunc = panophoto.__get__('createShareImg');
       // call the function for test
-      return panophoto.createShareImg(new Buffer(srcImage), srcSize.width, srcSize.height)
+      return createShareImgFunc(new Buffer(srcImage), srcSize.width, srcSize.height)
       .then((dstImgBuf) => {
         // save the precessed buffer to a tmp file
         fs.writeFileSync(tmpFileName, dstImgBuf);
@@ -195,7 +212,8 @@ describe('Panophoto: ', function() {
       // read the image without exif tag "-ProjectionType="equirectangular"
       var imageData = fs.readFileSync('./spec/fixtures/panophoto/share_without_exif.jpg');
 
-      return panophoto.addExifTag(new Buffer(imageData), '-ProjectionType=equirectangular')
+      var addExifTagFunc = panophoto.__get__('addExifTag');
+      return addExifTagFunc(new Buffer(imageData), '-ProjectionType=equirectangular')
       .then((exifImgBuf) => {
         var tmpFileName = './spec/fixtures/panophoto/test_for_addExifTag.jpg';
         // save the precessed buffer to a tmp file
