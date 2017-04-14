@@ -1,6 +1,8 @@
 var imageDiff = require('image-diff');
 var fs = require('fs');
 var P = require('bluebird');
+var farmhash = require('farmhash');
+
 const execSync = require('child_process').execSync;
 
 
@@ -35,7 +37,6 @@ var getFullResultPromised = function(actualImage, expectedImage){
   });
 };
 
-
 var areSamePromised = function(imagePairList){
   var taskList = [];
   for(var i=0; i<imagePairList.length; i++){
@@ -65,7 +66,7 @@ var areBufEqual = function(bufA, bufB) {
     return false;
   }
   for (var i = 0; i < len; i++) {
-    if (bufA.readUInt8(i) !== bufB.readUInt8(i)) {
+    if (farmhash.hash32(bufA) !== farmhash.hash32(bufB)) {
       return false;
     }
   }
