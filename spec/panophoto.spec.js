@@ -23,7 +23,7 @@ describe('Panophoto: ', function() {
   });
 
   describe('Test processPanoPhoto(): ', function() {
-    it('should store resized & tiled panophoto path specified by config', function () {
+    it('should store the resized & tiled panophoto to path specified by config', function () {
       // prepare for input test data
       panophoto.__set__('store', store);
 
@@ -84,12 +84,7 @@ describe('Panophoto: ', function() {
         // TODO: delete generated images
       })
       .catch((err) => {
-        if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }
+        assert.ok(false, 'Error occured: ' + err);
       }); 
     }); // it
   }); // describe
@@ -159,12 +154,7 @@ describe('Panophoto: ', function() {
         }
       })
       .catch((err)=>{
-        if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }
+        assert.ok(false, 'Error occured: ' + err);
       });
 
     });
@@ -197,12 +187,7 @@ describe('Panophoto: ', function() {
         fs.unlink(tmpFileName);
       })
       .catch((err) => {
-         if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }
+        assert.ok(false, 'Error occured: ' + err);
       });
     }); // it 
   }); // describe
@@ -224,12 +209,7 @@ describe('Panophoto: ', function() {
         assert(hasExifTag, 'the exif tag not exist');
       })
       .catch((err) => {
-        if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }  
+        assert.ok(false, 'Error occured: ' + err);
       });
     });
 

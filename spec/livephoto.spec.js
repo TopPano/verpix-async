@@ -10,7 +10,7 @@ var livephoto = require('../src/media.js');
 
 describe('Livephoto: ', function() {
   describe('Test processLivePhoto(): ', function() {
-    it('should store resized & deframed images which path are specified by config', function () {
+    it('should store resized & deframed images to the path specified by config', function () {
       // TODO: delete store data created by previous test
       // prepare for input test data
       var srcFileName = './spec/fixtures/livephoto/src.jpg';
@@ -61,12 +61,7 @@ describe('Livephoto: ', function() {
         // TODO: delete generated images
       })
       .catch((err) => {
-        if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }
+        assert.ok(false, 'Error occured: ' + err);
       });
     }); // it
   }); // describe
@@ -125,12 +120,7 @@ describe('Livephoto: ', function() {
         // TODO: delete generated images
       })
       .catch((err) => {
-        if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }
+        assert.ok(false, 'Error occured: ' + err);
       });
     });
   });
@@ -212,12 +202,7 @@ describe('Livephoto: ', function() {
         }
       })
       .catch((err)=>{
-        if(err){
-          assert.ok(false, err);
-        }
-        else{
-          assert.ok(false, 'something wrong');
-        }
+        assert.ok(false, 'Error occured: ' + err);
       });
 
     }); // it
