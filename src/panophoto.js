@@ -1,6 +1,4 @@
 var P = require('bluebird');
-var async = require('async');
-var urlencode = require('urlencode');
 var sharp = require('sharp');
 var sizeOf = require('image-size');
 var fs = require('fs');
@@ -13,40 +11,19 @@ let store = require('./store.js');
 const RESPONSIVE_PANO_DIMENSIONS = [
   {width: 8000, height: 4000, tiles: 8},
   {width: 4000, height: 2000, tiles: 8},
-  {width: 2000, height: 1000, tiles: 2}
+  {width: 2000, height: 1000, tiles: 2},
 ];
 
 const inflate = P.promisify(require('zlib').inflate);
   
-const tilizeAndCreatePromised = P.promisify(tilizeImageAndCreateObject);
-function tilizeImageAndCreateObject(imgBuf, params, callback) {
-  var tiles = calTileGeometries(params.width, params.height, params.tiles);
-  async.map(tiles, function(tile, callback) {
-    sharp(imgBuf)
-    .extract({left:tile.x, top:tile.y, width:tile.width, height:tile.height})
-    .quality(70)
-    .toFormat('jpeg')
-    .toBuffer( function(err, buffer) {
-      if (err) { return callback(err); }
-      var filename = tile.idx + '.jpg';
-      var keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
-      store.create(keyArr, buffer, function(err, result) {
-        if (err) { return callback(err); }
-        callback(null, {
-          srcUrl: result.location,
-          downloadUrl: result.location
-        });
-      });
-    });
-  }, callback);
-
-  function calTileGeometries(imgWidth, imgHeight, tiles) {
+var tilizePanoPromised = function(imgBuf, params) {
+  var calTileGeometries = function(imgWidth, imgHeight, tiles) {
     imgWidth = Number(imgWidth);
     imgHeight = Number(imgHeight);
     if (tiles === 8) {
-      var tileWidth = imgWidth / 4;
-      var tileHeight = imgHeight / 2;
-      var tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
+      let tileWidth = imgWidth / 4;
+      let tileHeight = imgHeight / 2;
+      let tileGeometries = [0, 1, 2, 3, 4, 5, 6, 7].map(function(i) {
         var geometry = {};
         geometry.idx = i;
         geometry.width = tileWidth;
@@ -63,9 +40,9 @@ function tilizeImageAndCreateObject(imgBuf, params, callback) {
       return tileGeometries;
     }
     else if (tiles === 2) {
-      var tileWidth = imgWidth / 2;
-      var tileHeight = imgHeight;
-      var tileGeometries = [0, 1].map(function(i) {
+      let tileWidth = imgWidth / 2;
+      let tileHeight = imgHeight;
+      let tileGeometries = [0, 1].map(function(i) {
         var geometry = {};
         geometry.idx = i;
         geometry.width = tileWidth;
@@ -81,8 +58,24 @@ function tilizeImageAndCreateObject(imgBuf, params, callback) {
       tileGeometries.push({idx:0, x:0, y:0, width: imgWidth, height: imgHeight});
       return tileGeometries;
     }// if-else
-  }
-}
+  };
+
+  var tiles = calTileGeometries(params.width, params.height, params.tiles);
+  return P.map(tiles, (tile) => {
+    return sharp(imgBuf)
+    .extract({left:tile.x, top:tile.y, width:tile.width, height:tile.height})
+    .quality(70)
+    .toFormat('jpeg')
+    .toBuffer()
+    .then((buf) => {
+      let filename = tile.idx + '.jpg';
+      let keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
+      //return P.reject();
+      return store.createPromised(keyArr, buf, {contentType: 'image/jpeg'});
+    }); // sharp
+  }); // map
+};
+
 
 /** 
 * @function procAndStoreImgPromised
@@ -90,6 +83,7 @@ function tilizeImageAndCreateObject(imgBuf, params, callback) {
 * @returns {[size:'4000X2000', tiles:8]}
 * @description resize, tilize and store panophoto in Promised way
 */
+// TODO:  need to add testcase for different size srcImg
 var procAndStoreImgPromised = function(params){
   var compare = function(a, b){
     if(a.width < b.width)
@@ -104,9 +98,7 @@ var procAndStoreImgPromised = function(params){
     if(params.width < option.width){
       // if imgWidth is smaller than option, do nothing
       if(index === (length-1)){
-        // the last option, the srcImg is smaller than the smallest option
-        // so just save src
-        // TODO: if the srcImg is too small, need tilize? need to add testcase for small srcImg
+        // the last option, the srcImg is smaller than the smallest option, just save src
         let sizeStr = params.width.toString()+'X'+params.height.toString();
         let imgKeyArr = [ params.shardingKey, 'media', params.mediaId, 'pano', sizeStr, '0.jpg' ];
         return store.createPromised(imgKeyArr, params.image, {contentType: 'image/jpeg'})
@@ -114,10 +106,12 @@ var procAndStoreImgPromised = function(params){
           return P.resolve({size: sizeStr, tiles: 1});
         });
       }
+      // do nothing, because the img size is smaller than option
+      return P.resolve();
     }
     else if(params.width === option.width && params.height === option.height) {
       // do tilize directliy
-      return tilizeAndCreatePromised(
+      return tilizePanoPromised(
         params.image, {
           type: 'pano',
           width: option.width,
@@ -126,8 +120,7 @@ var procAndStoreImgPromised = function(params){
           mediaId: params.mediaId,
           shardingKey: params.shardingKey
       }).
-      then((err) => {
-        if (err) { return P.reject(new Error(err)); }
+      then(() => {
         return P.resolve({size: option.width + 'X' + option.height, tiles: option.tiles});
       });
     }
@@ -137,7 +130,7 @@ var procAndStoreImgPromised = function(params){
       .resize(option.width, option.height)
       .toBuffer()
       .then((buffer) => {
-        return tilizeAndCreatePromised(buffer, {
+        return tilizePanoPromised(buffer, {
           type: 'pano',
           width: option.width,
           height: option.height,
@@ -148,15 +141,13 @@ var procAndStoreImgPromised = function(params){
       })
       .then(() => {
         return P.resolve({size: option.width + 'X' + option.height, tiles: option.tiles});
-      })
-      .catch((err) => {return P.reject(err);});
+      });
     }
-    // TODO: maybe it should be return P.reject, the process should come here
-    // it should be in if-else
-    return P.resolve();
+    return P.reject(new Error('Wrong process flow, it should be return in if-else statement'));
   }) // P.map
   .then((result) => {
     for(let i=result.length-1; i>-1; i--){
+      // remove undefined in result
       if(!result[i])
       {result.splice(i, 1);}
     }
@@ -268,11 +259,11 @@ var createPano = function(params) {
       return P.all(taskList);
     })
     .then((result) => {
-      if (result ){
+      if (result && result[2]){
         let quality = result[2];
         return P.resolve(quality);
       }
-      else{return P.reject(new Error('result is undefined'));}
+      else{return P.reject(new Error('quality is undefined'));}
     });
 };
 
@@ -283,23 +274,19 @@ var createPano = function(params) {
 * @description receive job from gearman, work and response back to gearman
 */
 var jobCreatePano = function(job) {
-  try {
-    var params = JSON.parse(job.payload);
-    createPano(params)
-    .then(function(result) {
-      var response = {
-        type: params.type,
-        mediaId: params.mediaId,
-        quality: result
-      };
-      job.workComplete(JSON.stringify(response));
-    })
-    .catch(function(err) {
-      job.reportException(err);
-    });
-  } catch (err) {
+  var params = JSON.parse(job.payload);
+  return createPano(params)
+  .then(function(result) {
+    var response = {
+      type: params.type,
+      mediaId: params.mediaId,
+      quality: result
+    };
+    job.workComplete(JSON.stringify(response));
+  })
+  .catch(function(err) {
     job.reportException(err);
-  }
+  });
 };
 
 

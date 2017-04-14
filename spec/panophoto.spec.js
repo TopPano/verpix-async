@@ -120,7 +120,7 @@ describe('Panophoto: ', function() {
       };
 
       var createPanoFunc = panophoto.__get__('createPano');
-      var deleteImagesFunc = panophoto.__get__('deleteImages');
+      var deletePanoFunc = panophoto.__get__('deletePano');
 
       return createPanoFunc(createParams)
       .then(function(result){
@@ -137,7 +137,7 @@ describe('Panophoto: ', function() {
           }
         };
         // test deleting images
-        return deleteImagesFunc(deleteParams);
+        return deletePanoFunc(deleteParams);
       })
       .then(function(){
         // check image are correctly deleted
