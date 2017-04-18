@@ -1,4 +1,5 @@
 var P = require('bluebird');
+var assert = require('assert');
 var sharp = require('sharp');
 var sizeOf = require('image-size');
 var fs = require('fs');
@@ -14,15 +15,18 @@ const RESPONSIVE_PANO_DIMENSIONS = [
   {width: 2000, height: 1000, tiles: 2},
 ];
 
-var compare = function(a, b){
-  if(a.width < b.width)
-    {return 1;}
-  if(a.width > b.width)
-    {return -1;}
-  return 0;
+var isDescend = function(array, attrForCompare){
+  let compare = function(a, b){
+    if(a[attrForCompare] < b[attrForCompare])
+      {return 1;}
+    if(a[attrForCompare] > b[attrForCompare])
+      {return -1;}
+    return 0;
+  };
+ return JSON.stringify(array) === JSON.stringify(array.slice(0).sort(compare));
 };
-RESPONSIVE_PANO_DIMENSIONS.sort(compare);
 
+assert(isDescend(RESPONSIVE_PANO_DIMENSIONS, 'width'), 'RESPONSIVE_PANO_DIMENSIONS should be descend');
 
 const inflate = P.promisify(require('zlib').inflate);
   
