@@ -11,9 +11,9 @@ worker.jobServers.forEach(function(server) {
   server.setMaxListeners(0);
 });
 
-var mediaFunc = require('./media');
+//var mediaFunc = require('./media');
+var panophotoApp = require('./panophoto.js');
 var userFunc = require('./user');
-var shareFunc = require('./share');
-mediaFunc.addTo(worker);
+//mediaFunc.addTo(worker);
+panophotoApp.addTo(worker);
 userFunc.addTo(worker);
-shareFunc.addTo(worker);

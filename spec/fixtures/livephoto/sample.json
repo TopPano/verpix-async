@@ -1,0 +1,30 @@
+{
+  "_id": "ad77f25ac825e800",
+  "status": "completed",
+  "dimension": {
+    "width": 240,
+    "height": 428,
+    "orientation": "portrait",
+    "action": "horizontal"
+  },
+  "type": "livePhoto",
+  "caption": "",
+  "created": "2017-03-21T08:03:47.728Z",
+  "modified": "2017-03-21T08:10:34.660Z",
+  "ownerId": "59d7c560-a282-11e6-b815-332ab553a7e4",
+  "locationId": null,
+  "title": "",
+  "tags": [],
+  "content": {
+    "shardingKey": "cc1c",
+    "storeUrl": "https://verpixplus-img-production.s3.amazonaws.com/",
+    "cdnUrl": "https://dykzcuzsao2p1.cloudfront.net/",
+    "quality": [
+      "240X428"
+    ],
+    "count": 15,
+    "imgArrBoundary": "S7FnN4TR2x",
+    "videoStatus": "completed",
+    "videoType": "mp4"
+  }
+}
