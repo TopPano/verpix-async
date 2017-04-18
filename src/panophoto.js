@@ -14,6 +14,16 @@ const RESPONSIVE_PANO_DIMENSIONS = [
   {width: 2000, height: 1000, tiles: 2},
 ];
 
+var compare = function(a, b){
+  if(a.width < b.width)
+    {return 1;}
+  if(a.width > b.width)
+    {return -1;}
+  return 0;
+};
+RESPONSIVE_PANO_DIMENSIONS.sort(compare);
+
+
 const inflate = P.promisify(require('zlib').inflate);
   
 var tilizePanoPromised = function(imgBuf, params) {
@@ -70,7 +80,6 @@ var tilizePanoPromised = function(imgBuf, params) {
     .then((buf) => {
       let filename = tile.idx + '.jpg';
       let keyArr = [ params.shardingKey, 'media', params.mediaId, params.type, params.width+ 'X' +params.height, filename ];
-      //return P.reject();
       return store.createPromised(keyArr, buf, {contentType: 'image/jpeg'});
     }); // sharp
   }); // map
@@ -85,14 +94,6 @@ var tilizePanoPromised = function(imgBuf, params) {
 */
 // TODO:  need to add testcase for different size srcImg
 var procAndStoreImgPromised = function(params){
-  var compare = function(a, b){
-    if(a.width < b.width)
-      {return 1;}
-    if(a.width > b.width)
-      {return -1;}
-    return 0;
-  };
-  RESPONSIVE_PANO_DIMENSIONS.sort(compare);
 
   return P.map(RESPONSIVE_PANO_DIMENSIONS, (option, index, length) => {
     if(params.width < option.width){
@@ -148,8 +149,7 @@ var procAndStoreImgPromised = function(params){
   .then((result) => {
     for(let i=result.length-1; i>-1; i--){
       // remove undefined in result
-      if(!result[i])
-      {result.splice(i, 1);}
+      if(!result[i]){result.splice(i, 1);}
     }
     return P.resolve(result);
   });
@@ -170,18 +170,17 @@ var addExifTag = P.promisify(function(srcImgBuf, tag, callback) {
         fs.unlinkSync(tmpFilename + '_original');
         callback(null, data);
       });
-
     });
   });
 });
 
 /** 
-* @function createShareImg
+* @function createShareFbImg
 * @params imgBuf, width, height
 * @returns imgBuf with Exif Tag
 * @description create a resized image (smaller than 4000X2000) with EXIF Tag "ProjectionType=equirectangular" for sharing to FB 
 */
-var createShareImg = P.promisify( function(imgBuf, width, height, callback) {
+var createShareFbImg = P.promisify( function(imgBuf, width, height, callback) {
   var sharpObj;
   if(width > 4000) {
     sharpObj = sharp(imgBuf).resize(4000, 2000);
@@ -250,8 +249,8 @@ var createPano = function(params) {
         mediaId: params.mediaId,
         shardingKey: params.shardingKey
       }));
-      // createShareImg
-      taskList.push(createShareImg(srcImgBuf, params.image.width, params.image.height)
+      // createShareFbImg
+      taskList.push(createShareFbImg(srcImgBuf, params.image.width, params.image.height)
                     .then((shareBuf) => {
                           return store.createPromised(shareKeyArr, shareBuf, {contentType: 'image/jpeg'});
                     })
@@ -274,7 +273,7 @@ var createPano = function(params) {
 * @description receive job from gearman, work and response back to gearman
 */
 var jobCreatePano = function(job) {
-  var params = JSON.parse(job.payload);
+  let params = JSON.parse(job.payload);
   return createPano(params)
   .then(function(result) {
     var response = {
@@ -282,10 +281,11 @@ var jobCreatePano = function(job) {
       mediaId: params.mediaId,
       quality: result
     };
-    job.workComplete(JSON.stringify(response));
+    return job.workComplete(JSON.stringify(response));
   })
   .catch(function(err) {
-    job.reportException(err);
+    // TODO: logger
+    return job.reportError(err);
   });
 };
 
@@ -348,31 +348,27 @@ var deletePano = function(params){
 * @description receive job from gearman, delete and response back to gearman
 */
 var jobDeletePano = function(job) {
-  try {
-    var params = JSON.parse(job.payload);
-    if (!params.media) {
-      job.reportException(new Error('params without media'));
-    }
-
-    deletePano(params)
-    .then(() => { 
-      job.workComplete(JSON.stringify({
-        status: 'success'
-      }));
-    },
-    (err) => {
-      if (err) { return job.reportException(err); }
-    });
-  } catch (err) {
-    job.reportException(err);
-  }
+  let params = JSON.parse(job.payload);
+  return P.try(() => {
+    if (!params.media) {return P.reject(new Error('params without media'));}
+    return deletePano(params);
+  })
+  .then(() => {
+    return job.workComplete(JSON.stringify({
+      status: 'success'
+    }));
+  })
+  .catch((err) => {
+    // TODO: logger
+    return job.reportError(err);
+  });
 };
-
 
 var addTo = function (worker) {
   worker.addFunction('mediaProcessingPanoPhoto', jobCreatePano, { timeout: config.defaultTimeout });
   worker.addFunction('deleteMediaImages', jobDeletePano, { timeout: config.defaultTimeout });
 };
+
 module.exports = {
   addTo: addTo
 };
